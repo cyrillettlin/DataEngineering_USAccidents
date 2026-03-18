@@ -25,7 +25,20 @@ Peter, a senior data analyst at the Department of Motor Vehicles (DMV), is respo
 
 # Installation
 
-### Download data
+## 1. Clone Repository
+Clone the repository:
+```git clone git@github.com:cyrillettlin/DataEngineering_USAccidents.git```
+
+## 2. Download the data
+Go to the Docker setup:
+```cd DataEngineering_USAccidents/Docker\ Environment/```
+
+Download the Data:
 ```
-curl -L -o ~/Downloads/us-accidents.zip https://www.kaggle.com/api/v1/datasets/download/sobhanmoosavi/us-accidents
+curl -L -o data/us-accidents.zip https://www.kaggle.com/api/v1/datasets/download/sobhanmoosavi/us-accidents && \
+unzip data/us-accidents.zip -d data
 ```
+
+## 3. Start the containers
+Download and start the docker containers:
+```docker compose up```
