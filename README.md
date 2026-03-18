@@ -4,6 +4,14 @@
 - Cyrill Ettlin
 - Fabian Müller
 
+## UI-Access
+* Kestra: http://localhost:8080
+  * User: ```admin@kestra.io```
+  * PW: ```Admin1234!```
+* pgAdmin: http://localhost:8085
+  * User: ```admin@admin.com```
+  * PW: ```root```
+
 ## Dataset
 - https://www.kaggle.com/datasets/sobhanmoosavi/us-accidents
 
