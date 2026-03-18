@@ -51,9 +51,6 @@ services:
   kestra:
     image: kestra/kestra:v1.1
     pull_policy: always
-    # Note that this setup with a root user is intended for development purpose.
-    # Our base image runs without root, but the Docker Compose implementation needs root to access the Docker socket
-    # To run Kestra in a rootless mode in production, see: https://kestra.io/docs/installation/podman-compose
     user: "root"
     command: server standalone
     volumes:
@@ -71,7 +68,7 @@ services:
         kestra:
           server:
             basicAuth:
-              username: "admin@kestra.io" # it must be a valid email address
+              username: "admin@kestra.io"
               password: Admin1234!
           repository:
             type: postgres
@@ -91,4 +88,18 @@ services:
     depends_on:
       kestra_postgres:
         condition: service_started
-    
+
+  ingest:
+    image: python:3.12-slim
+    container_name: ingest
+    working_dir: /app
+    volumes:
+      - ./ingest.py:/app/ingest.py
+      - ./requirements.txt:/app/requirements.txt
+      - ./data/US_Accidents_March23.csv:/app/us_accidents.csv
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             python ingest.py --csv-file /app/us_accidents.csv --limit 1000000"
+    depends_on:
+      pgdatabase:
+        condition: service_started
