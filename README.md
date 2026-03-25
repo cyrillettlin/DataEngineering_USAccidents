@@ -42,3 +42,5 @@ unzip data/us-accidents.zip -d data
 ## 3. Start the containers
 Download and start the docker containers:
 ```docker compose up```
+
+## 4. How to verify the System works

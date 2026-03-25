@@ -103,3 +103,19 @@ services:
     depends_on:
       pgdatabase:
         condition: service_started
+
+  transform:
+    image: python:3.12-slim
+    container_name: transform
+    working_dir: /app
+    volumes:
+      - ./transform.py:/app/transform.py
+      - ./requirements.txt:/app/requirements.txt
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             python transform.py"
+    depends_on:
+      ingest:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_started

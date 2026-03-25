@@ -14,7 +14,7 @@ DB_CONFIG = {
     "password": "root",
 }
 
-TABLE_NAME = "accidents"
+TABLE_NAME = "import_accidents"
 
 
 def parse_args():
