@@ -71,6 +71,27 @@ unzip data/us-accidents.zip -d data
 
 ### 3. Start the containers
 Download and start the docker containers:
-```docker compose up```
+```docker compose up```.
+This step may take a few minutes and not all containers are running at all times.
 
 ### 4. How to verify the System works
+
+#### 4.1 Open pgAdmin:
+* pgAdmin: http://localhost:8085
+    * User: ```admin@admin.com```
+    * PW: ```root```
+
+#### 4.2 Add New Server
+* General
+  * Name -> us_accidents
+* Connection
+  * Host name/address -> pgdatabase 
+  * Port -> 5432
+  * Maintenance databasse -> postgres
+  * Username -> root
+  * Password -> root
+  
+### 4.3 Data location
+* You can now find the data in the ***us_accidents*** database.
+  * ``` Databases -> us_accidents -> Schemas -> public -> Tables -> accidents```
+  * Rightclick on accidents and select "View/Edit Data" and then "First 100 Rows".

@@ -6,6 +6,7 @@ from datetime import datetime
 
 import psycopg2
 
+# Database connection configuration
 DB_CONFIG = {
     "host": "pgdatabase",
     "port": 5432,
@@ -14,10 +15,12 @@ DB_CONFIG = {
     "password": "root",
 }
 
+# Target table for raw ingestion (staging table)
 TABLE_NAME = "import_accidents"
 
 
 def parse_args():
+    """Parse command line arguments (CSV path + optional row limit)."""
     parser = argparse.ArgumentParser(description="Ingest CSV into Postgres")
     parser.add_argument(
         "--limit",
@@ -34,6 +37,7 @@ def parse_args():
     return parser.parse_args()
 
 
+# Helper functions to safely convert values from CSV
 def parse_float(value):
     return float(value) if value else None
 
@@ -51,6 +55,7 @@ def parse_timestamp(value):
 
 
 def get_connection(retries=20, delay=3):
+    """Retry connection to Postgres (useful in container environments)."""
     for attempt in range(1, retries + 1):
         try:
             conn = psycopg2.connect(**DB_CONFIG)
@@ -63,6 +68,7 @@ def get_connection(retries=20, delay=3):
 
 
 def create_table(conn):
+    """Create staging table for raw data if it does not exist."""
     query = f"""
     CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
         id TEXT PRIMARY KEY,
@@ -119,6 +125,12 @@ def create_table(conn):
 
 
 def ingest_csv(conn, csv_file, limit=None):
+    """
+    Load CSV data into Postgres.
+
+    Reads the file row by row and inserts into the staging table.
+    ON CONFLICT ensures no duplicate IDs are inserted.
+    """
     insert_query = f"""
     INSERT INTO {TABLE_NAME} VALUES (
         %s, %s, %s, %s, %s,
@@ -137,11 +149,13 @@ def ingest_csv(conn, csv_file, limit=None):
 
     count = 0
 
+    # Open CSV file and read rows as dictionaries
     with open(csv_file, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
 
         with conn.cursor() as cur:
             for row in reader:
+                # Convert and map CSV fields to database schema
                 values = (
                     row["ID"],
                     row["Source"],
@@ -191,9 +205,11 @@ def ingest_csv(conn, csv_file, limit=None):
                     row["Astronomical_Twilight"],
                 )
 
+                # Insert row into database
                 cur.execute(insert_query, values)
                 count += 1
 
+                # Optional limit for testing / partial ingestion
                 if limit is not None and count >= limit:
                     print(f"Limit reached: {limit} rows")
                     break
@@ -203,8 +219,10 @@ def ingest_csv(conn, csv_file, limit=None):
 
 
 def main():
+    """Main entry point for ingestion pipeline."""
     args = parse_args()
 
+    # Validate input file
     if not os.path.exists(args.csv_file):
         raise FileNotFoundError(f"CSV not found: {args.csv_file}")
 
