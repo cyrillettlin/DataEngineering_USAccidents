@@ -73,8 +73,8 @@ def create_target_table(conn):
         timezone TEXT,
         airport_code TEXT,
 
-        temperature_f DOUBLE PRECISION,
-        wind_chill_f DOUBLE PRECISION,
+        temperature_c DOUBLE PRECISION,
+        wind_chill_c DOUBLE PRECISION,
         humidity_pct DOUBLE PRECISION,
         pressure_in DOUBLE PRECISION,
         wind_direction TEXT,
@@ -155,8 +155,8 @@ def transform_data(conn):
         timezone,
         airport_code,
 
-        temperature_f,
-        wind_chill_f,
+        temperature_c,
+        wind_chill_c,
         humidity_pct,
         pressure_in,
         wind_direction,
@@ -234,8 +234,16 @@ def transform_data(conn):
         timezone,
         airport_code,
 
-        temperature_f,
-        wind_chill_f,
+        CASE
+            WHEN temperature_f IS NOT NULL THEN ROUND(((temperature_f - 32) * 5.0 / 9.0)::numeric, 2)::double precision
+            ELSE NULL
+        END,
+
+        CASE
+            WHEN wind_chill_f IS NOT NULL THEN ROUND(((wind_chill_f - 32) * 5.0 / 9.0)::numeric, 2)::double precision
+            ELSE NULL
+        END,
+
         humidity_pct,
         pressure_in,
         wind_direction,
@@ -275,17 +283,21 @@ def transform_data(conn):
     conn.commit()
     print(f"Transformed {count} rows into {TARGET_TABLE}.")
 
+
 def wait_for_source_table(conn, retries=60, delay=5):
     for attempt in range(1, retries + 1):
         try:
             with conn.cursor() as cur:
-                cur.execute(f"""
+                cur.execute(
+                    f"""
                     SELECT EXISTS (
                         SELECT 1
                         FROM information_schema.tables
                         WHERE table_name = %s
                     );
-                """, (SOURCE_TABLE,))
+                """,
+                    (SOURCE_TABLE,),
+                )
                 table_exists = cur.fetchone()[0]
 
                 if table_exists:
@@ -301,6 +313,7 @@ def wait_for_source_table(conn, retries=60, delay=5):
             time.sleep(delay)
 
     raise RuntimeError(f"Source table {SOURCE_TABLE} was not ready in time.")
+
 
 def main():
     conn = get_connection()

@@ -13,6 +13,14 @@
   * PW: ```root```
 
 ## Dataset
+### Sample Data (Raw)
+
+| ID  | Source  | Severity | Start_Time           | End_Time             | Start_Lat | Start_Lng  | Distance(mi) | City         | State | Temperature(F) | Visibility(mi) | Weather_Condition | Traffic_Signal | Sunrise_Sunset |
+|-----|--------|----------|----------------------|----------------------|-----------|------------|--------------|--------------|-------|----------------|----------------|-------------------|----------------|----------------|
+| A-1 | Source2 | 3        | 2016-02-08 05:46:00 | 2016-02-08 11:00:00 | 39.865147 | -84.058723 | 0.01         | Dayton       | OH    | 36.9           | 10.0           | Light Rain        | False          | Night          |
+| A-2 | Source2 | 2        | 2016-02-08 06:07:59 | 2016-02-08 06:37:59 | 39.928059 | -82.831184 | 0.01         | Reynoldsburg | OH    | 37.9           |                |                   |                |                |
+
+### Source
 - https://www.kaggle.com/datasets/sobhanmoosavi/us-accidents
 
 ## Use case
@@ -23,8 +31,10 @@ Peter, a senior data analyst at the Department of Motor Vehicles (DMV), is respo
 
 
 ## Transformation
-### Format standardistion
-The transformation standardises measurement units to ensure consistency across the dataset. In the raw data, distance and visibility are stored in miles (`distance_mi`, `visibility_mi`). These values are converted into kilometres (`distance_km`, `visibility_km`) using the factor 1.60934 and rounded to three decimal places. This makes the dataset compatible with the metric system and easier to use in international contexts.
+### Format standardisation
+The transformation standardises measurement units to ensure consistency across the dataset. In the raw data, distance and visibility are stored in miles (`distance_mi`, `visibility_mi`). These values are converted into kilometres (`distance_km`, `visibility_km`) using the factor 1.60934 and rounded to three decimal places.
+Additionally, temperature and wind chill values are converted from Fahrenheit (`temperature_f`, `wind_chill_f`) to Celsius (`temperature_c`, `wind_chill_c`) using the standard formula.
+This ensures that all physical measurements are aligned with the metric system, improving consistency and making the dataset easier to use in international contexts.
 
 ### Column engineering
 Several new columns are derived from existing timestamp fields to improve analytical usability. From `start_time`, `end_time`, and `weather_timestamp`, the following components are extracted:
@@ -36,6 +46,13 @@ Several new columns are derived from existing timestamp fields to improve analyt
 
 
   This allows efficient time-based analysis (e.g. accidents per hour or month) without repeatedly applying SQL extraction functions.
+
+### Sample Data (Transformed)
+
+| ID  | Severity | Start_Year | Start_Month | Start_Hour | Distance(km) | Visibility(km) | Temperature(°C) | Wind_Chill(°C) | City         | State | Weather_Condition |
+|-----|----------|-----------|-------------|------------|--------------|----------------|-----------------|----------------|--------------|-------|-------------------|
+| A-1 | 3        | 2016      | 2           | 5          | 0.016        | 16.093         | 2.72            |                | Dayton       | OH    | Light Rain        |
+| A-2 | 2        | 2016      | 2           | 6          | 0.016        |                | 3.28            |                | Reynoldsburg | OH    |                   |
 
 ## Installation
 ### 1. Clone Repository
