@@ -14,7 +14,7 @@ networks:
   accidents_net:
     name: accidents_net
 
-# ── Shared Airflow environment ──────────────────────────────────────────────
+# ── Shared Airflow environment ────────────────────────────────────────────────
 x-airflow-env: &airflow-env
   AIRFLOW__CORE__EXECUTOR: LocalExecutor
   AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_postgres:5432/airflow
@@ -23,12 +23,20 @@ x-airflow-env: &airflow-env
   AIRFLOW__CORE__LOAD_EXAMPLES: "false"
   AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
   AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
-  # Pass Docker socket into Airflow so DockerOperator can spawn containers
   DOCKER_HOST: unix:///var/run/docker.sock
+
+# ── Shared Airflow volumes ────────────────────────────────────────────────────
+# Extracted so webserver, scheduler and init all mount exactly the same set.
+x-airflow-volumes: &airflow-volumes
+  - ./dags:/opt/airflow/dags
+  - airflow_logs:/opt/airflow/logs
+  # Mount the host Docker socket so DockerOperator can spawn containers.
+  # The group_add below grants permission on Linux/WSL without needing root.
+  - /var/run/docker.sock:/var/run/docker.sock
 
 services:
 
-  # ── Data loaders (one-time setup) ────────────────────────────────────────
+  # ── Data loaders (one-time setup) ─────────────────────────────────────────
   data_loader:
     image: alpine:3
     volumes:
@@ -53,7 +61,7 @@ services:
     profiles:
       - setup
 
-  # ── Application database ─────────────────────────────────────────────────
+  # ── Application database ──────────────────────────────────────────────────
   pgdatabase:
     image: postgres:18
     environment:
@@ -85,7 +93,7 @@ services:
       pgdatabase:
         condition: service_healthy
 
-  # ── Airflow metadata database ────────────────────────────────────────────
+  # ── Airflow metadata database ─────────────────────────────────────────────
   airflow_postgres:
     image: postgres:18
     environment:
@@ -102,14 +110,18 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Airflow init (runs once, then exits) ─────────────────────────────────
+  # ── Airflow init (runs once, then exits) ──────────────────────────────────
   airflow_init:
     image: apache/airflow:2.9.3
     environment:
       <<: *airflow-env
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
+    volumes: *airflow-volumes
+    # group_add: adds the host 'docker' group GID to the container user so it
+    # can read /var/run/docker.sock on Linux/WSL without running as root.
+    # On Windows/Mac Docker Desktop the socket is a named pipe proxy and this
+    # setting is simply ignored — so it is safe on all platforms.
+    group_add:
+      - "${DOCKER_GID:-0}"
     entrypoint: bash -c "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
     networks:
       - accidents_net
@@ -117,15 +129,14 @@ services:
       airflow_postgres:
         condition: service_healthy
 
-  # ── Airflow webserver ────────────────────────────────────────────────────
+  # ── Airflow webserver ─────────────────────────────────────────────────────
   airflow_webserver:
     image: apache/airflow:2.9.3
     environment:
       <<: *airflow-env
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
-      - /var/run/docker.sock:/var/run/docker.sock   # DockerOperator needs this
+    volumes: *airflow-volumes
+    group_add:
+      - "${DOCKER_GID:-0}"
     ports:
       - "8080:8080"
     networks:
@@ -142,15 +153,14 @@ services:
       timeout: 10s
       retries: 10
 
-  # ── Airflow scheduler ────────────────────────────────────────────────────
+  # ── Airflow scheduler ─────────────────────────────────────────────────────
   airflow_scheduler:
     image: apache/airflow:2.9.3
     environment:
       <<: *airflow-env
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
-      - /var/run/docker.sock:/var/run/docker.sock   # DockerOperator needs this
+    volumes: *airflow-volumes
+    group_add:
+      - "${DOCKER_GID:-0}"
     networks:
       - accidents_net
     command: scheduler

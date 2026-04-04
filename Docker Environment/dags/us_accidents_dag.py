@@ -4,18 +4,20 @@ US Accidents batch pipeline DAG.
 Runs ingest → transform sequentially using DockerOperator.
 Scheduled daily at 03:00 UTC. Supports backfills from 2024-01-01.
 
-Row limit (for testing):
-  Set the Airflow Variable 'ingest_limit' to control how many rows are ingested.
-  - Not set or empty  →  full file (~7M rows, production mode)
-  - "1000"            →  1k rows, fast smoke test (~10 seconds)
-  - "100000"          →  100k rows, representative sample (~1 minute)
+Platform notes:
+  PGHOST is read from the environment variable set by setup_env.sh:
+    - Linux / WSL:   pgdatabase          (task containers join accidents_net)
+    - Windows / Mac: host.docker.internal (Docker Desktop proxy)
 
-  Set via Airflow UI:  Admin → Variables → ingest_limit
-  Set via CLI:
-    docker compose exec airflow_scheduler \
-      airflow variables set ingest_limit 1000
+Row limit (for testing):
+  Set Airflow Variable 'ingest_limit' to restrict how many rows are ingested.
+    Not set  →  full file (~7M rows)
+    "1000"   →  quick smoke test (~10 seconds)
+  Via CLI:  docker compose exec airflow_scheduler airflow variables set ingest_limit 1000
+  Via UI:   Admin → Variables → ingest_limit
 """
 
+import os
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -23,23 +25,26 @@ from airflow.models import Variable
 from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
 
-# ── Row limit ─────────────────────────────────────────────────────────────────
-# Read from Airflow Variable so it can be changed without touching the DAG file.
-# Returns None (= full file) if the variable is not set or is blank.
-_limit_raw = Variable.get("ingest_limit", default_var="").strip()
-INGEST_LIMIT = int(_limit_raw) if _limit_raw else None
+# ── Postgres host (platform-aware) ────────────────────────────────────────────
+# Injected into the DAG container via the .env file written by setup_env.sh.
+# Falls back to host.docker.internal so the DAG works on Windows/Mac even
+# without running setup_env.sh first.
+PGHOST = os.environ.get("PGHOST", "host.docker.internal")
 
-_limit_flag = f"--limit {INGEST_LIMIT}" if INGEST_LIMIT else ""
-
-# ── Postgres connection (host.docker.internal for Docker Desktop on Windows/Mac)
 PG_ENV = {
-    "PGHOST": "host.docker.internal",
+    "PGHOST": PGHOST,
     "PGPORT": "5432",
     "PGDATABASE": "us_accidents",
     "PGUSER": "root",
     "PGPASSWORD": "root",
 }
 
+# ── Row limit (optional, for testing) ────────────────────────────────────────
+_limit_raw = Variable.get("ingest_limit", default_var="").strip()
+INGEST_LIMIT = int(_limit_raw) if _limit_raw else None
+_limit_flag = f"--limit {INGEST_LIMIT}" if INGEST_LIMIT else ""
+
+# ── Shared volume mount ───────────────────────────────────────────────────────
 DATA_MOUNT = Mount(
     target="/data",
     source="dockerenvironment_accidents_data",
@@ -76,7 +81,11 @@ with DAG(
         ),
         environment=PG_ENV,
         mounts=[DATA_MOUNT],
+        # extra_hosts ensures host.docker.internal resolves inside Linux
+        # containers on Docker Desktop. On native Linux with network_mode
+        # accidents_net this entry is harmless.
         extra_hosts={"host.docker.internal": "host-gateway"},
+        network_mode="accidents_net",
         auto_remove="success",
         docker_url="unix://var/run/docker.sock",
         mount_tmp_dir=False,
@@ -93,6 +102,7 @@ with DAG(
         environment=PG_ENV,
         mounts=[DATA_MOUNT],
         extra_hosts={"host.docker.internal": "host-gateway"},
+        network_mode="accidents_net",
         auto_remove="success",
         docker_url="unix://var/run/docker.sock",
         mount_tmp_dir=False,
