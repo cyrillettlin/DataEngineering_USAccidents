@@ -5,12 +5,12 @@
 - Fabian Müller
 
 ## UI-Access
-* Kestra: http://localhost:8080
-  * User: ```admin@kestra.io```
-  * PW: ```Admin1234!```
+* Airflow: http://localhost:8080
+  * User: `admin`
+  * PW: `admin`
 * pgAdmin: http://localhost:8085
-  * User: ```admin@admin.com```
-  * PW: ```root```
+  * User: `admin@admin.com`
+  * PW: `root`
 
 ## Dataset
 ### Sample Data (Raw)
@@ -44,8 +44,7 @@ Several new columns are derived from existing timestamp fields to improve analyt
 - hour
 - minute
 
-
-  This allows efficient time-based analysis (e.g. accidents per hour or month) without repeatedly applying SQL extraction functions.
+This allows efficient time-based analysis (e.g. accidents per hour or month) without repeatedly applying SQL extraction functions.
 
 ### Sample Data (Transformed)
 
@@ -55,43 +54,167 @@ Several new columns are derived from existing timestamp fields to improve analyt
 | A-2 | 2        | 2016      | 2           | 6          | 0.016        |                | 3.28            |                | Reynoldsburg | OH    |                   |
 
 ## Installation
+
 ### 1. Clone Repository
-Clone the repository:
-```git clone git@github.com:cyrillettlin/DataEngineering_USAccidents.git```
 
-### 2. Download the data
-Go to the Docker setup:
-```cd DataEngineering_USAccidents/Docker\ Environment/```
-
-Download the Data:
+**Linux / WSL / macOS / Windows PowerShell:** — if you have an SSH key configured with GitHub:
+```bash
+git clone git@github.com:cyrillettlin/DataEngineering_USAccidents.git
 ```
-curl -L -o data/us-accidents.zip https://www.kaggle.com/api/v1/datasets/download/sobhanmoosavi/us-accidents && \
+
+If not (or if you get a `Permission denied (publickey)` error), use HTTPS instead:
+```bash
+git clone https://github.com/cyrillettlin/DataEngineering_USAccidents.git
+```
+
+---
+
+### 2. Navigate to the Docker directory
+
+**Linux / WSL / macOS:**
+```bash
+cd DataEngineering_USAccidents/Docker\ Environment/
+```
+
+**Windows PowerShell:**
+```powershell
+cd "DataEngineering_USAccidents\Docker Environment"
+```
+
+---
+
+### 3. Download the dataset
+
+**Linux / WSL / macOS:**
+```bash
+curl -L -o data/us-accidents.zip \
+  https://www.kaggle.com/api/v1/datasets/download/sobhanmoosavi/us-accidents
 unzip data/us-accidents.zip -d data
 ```
 
-### 3. Start the containers
-Download and start the docker containers:
-```docker compose up```.
-This step may take a few minutes and not all containers are running at all times.
+**Windows PowerShell:**
+```powershell
+Invoke-WebRequest -Uri "https://www.kaggle.com/api/v1/datasets/download/sobhanmoosavi/us-accidents" `
+  -OutFile "data\us-accidents.zip"
+Expand-Archive -Path data\us-accidents.zip -DestinationPath data
+```
 
-### 4. How to verify the System works
+---
 
-#### 4.1 Open pgAdmin:
+### 4. Configure the environment
+
+Run the setup script once. It detects your OS and writes a `.env` file with the correct Docker socket permissions and Postgres hostname for your platform.
+
+**Linux / WSL / macOS / Windows PowerShell:**
+```bash
+bash setup_env.sh
+```
+
+> If you get a `\r: command not found` error on WSL, the file has Windows line endings. Fix with:
+> ```bash
+> sed -i 's/\r//' setup_env.sh && bash setup_env.sh
+> ```
+
+| Platform | DOCKER_GID | PGHOST |
+|---|---|---|
+| Linux / WSL | GID of `/var/run/docker.sock` | `pgdatabase` |
+| Windows / macOS | `0` (not needed) | `host.docker.internal` |
+
+---
+
+### 5. Load data and scripts into the Docker volume
+
+This one-time setup step copies the CSV and pipeline scripts into the shared Docker volume:
+```
+docker compose --profile setup up
+```
+
+---
+
+### 6. Start the containers
+
+```
+docker compose up -d
+```
+
+The first startup takes a few minutes. Airflow initialises its database and creates the admin user automatically before the webserver and scheduler start.
+
+---
+
+### 7. Verify the data was loaded
+
+#### 7.1 Open pgAdmin
 * pgAdmin: http://localhost:8085
-    * User: ```admin@admin.com```
-    * PW: ```root```
+  * User: `admin@admin.com`
+  * PW: `root`
 
-#### 4.2 Add New Server
-* General
-  * Name -> us_accidents
-* Connection
-  * Host name/address -> pgdatabase 
-  * Port -> 5432
-  * Maintenance databasse -> postgres
-  * Username -> root
-  * Password -> root
-  
-### 4.3 Data location
-* You can now find the data in the ***us_accidents*** database.
-  * ``` Databases -> us_accidents -> Schemas -> public -> Tables -> accidents```
-  * Rightclick on accidents and select "View/Edit Data" and then "First 100 Rows".
+#### 7.2 Add New Server
+* **General**
+  * Name: `us_accidents`
+* **Connection**
+  * Host name/address: `pgdatabase`
+  * Port: `5432`
+  * Maintenance database: `us_accidents`
+  * Username: `root`
+  * Password: `root`
+
+#### 7.3 Data location
+You can now find the data in the **us_accidents** database:
+```
+Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
+```
+Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
+
+---
+
+### 8. Workflow Orchestration (Airflow)
+
+The pipeline is orchestrated using Apache Airflow. The DAG `us_accidents_pipeline` runs the ingestion and transformation steps sequentially and is scheduled to execute daily at 03:00 UTC.
+
+#### 8.1 Open the Airflow UI
+* Airflow: http://localhost:8080
+  * User: `admin`
+  * PW: `admin`
+
+#### 8.2 Trigger a manual run
+1. Navigate to **DAGs** and find `us_accidents_pipeline`.
+2. Enable the DAG using the toggle on the left if it is paused.
+3. Click the **Run** button (▶) on the right to trigger a manual execution.
+4. Click on the DAG name, then open the **Graph** view to watch the `ingest → transform` tasks execute in sequence.
+
+#### 8.3 Trigger a backfill via CLI
+
+**Linux / WSL / macOS / Windows PowerShell:**
+```bash
+docker compose exec airflow_scheduler \
+  airflow dags backfill us_accidents_pipeline \
+  --start-date 2024-01-01 \
+  --end-date 2024-01-31
+```
+
+
+#### 8.4 Verify the pipeline completed successfully
+Check that both tasks show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in pgAdmin under:
+```
+Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
+```
+
+#### 8.5 Run with a reduced row limit (for testing)
+The full dataset contains ~7 million rows and takes several minutes to ingest. For a quick smoke test, limit the number of rows via an Airflow Variable — no code changes required.
+
+```
+docker compose exec airflow_scheduler airflow variables set ingest_limit 1000
+```
+
+**Or via the Airflow UI:** Admin → Variables → Add → Key: `ingest_limit`, Value: `1000`
+
+| Value | Rows | Approximate duration |
+|-------|------|----------------------|
+| `1000` | 1k | ~10 seconds |
+| `100000` | 100k | ~1 minute |
+| *(not set)* | all ~7M | production mode |
+
+To switch back to the full dataset, delete the variable:
+```
+docker compose exec airflow_scheduler airflow variables delete ingest_limit
+```
