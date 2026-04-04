@@ -1,14 +1,59 @@
+name: dockerenvironment
+
 volumes:
   us_accidents_postgres_data:
     driver: local
-  kestra_postgres_data:
+  airflow_postgres_data:
     driver: local
-  kestra_data:
+  airflow_logs:
     driver: local
-  kestra_tmp:
+  accidents_data:
     driver: local
 
+networks:
+  accidents_net:
+    name: accidents_net
+
+# ── Shared Airflow environment ──────────────────────────────────────────────
+x-airflow-env: &airflow-env
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_postgres:5432/airflow
+  AIRFLOW__CORE__FERNET_KEY: ""
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+  AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+  # Pass Docker socket into Airflow so DockerOperator can spawn containers
+  DOCKER_HOST: unix:///var/run/docker.sock
+
 services:
+
+  # ── Data loaders (one-time setup) ────────────────────────────────────────
+  data_loader:
+    image: alpine:3
+    volumes:
+      - ./data/US_Accidents_March23.csv:/src/us_accidents.csv:ro
+      - accidents_data:/data
+    command: sh -c "cp /src/us_accidents.csv /data/us_accidents.csv && echo 'CSV loaded.'"
+    profiles:
+      - setup
+
+  script_loader:
+    image: alpine:3
+    volumes:
+      - ./ingest.py:/src/ingest.py:ro
+      - ./transform.py:/src/transform.py:ro
+      - ./requirements.txt:/src/requirements.txt:ro
+      - accidents_data:/data
+    command: >
+      sh -c "cp /src/ingest.py /data/ingest.py &&
+             cp /src/transform.py /data/transform.py &&
+             cp /src/requirements.txt /data/requirements.txt &&
+             echo 'Scripts loaded.'"
+    profiles:
+      - setup
+
+  # ── Application database ─────────────────────────────────────────────────
   pgdatabase:
     image: postgres:18
     environment:
@@ -19,103 +64,98 @@ services:
       - "5432:5432"
     volumes:
       - us_accidents_postgres_data:/var/lib/postgresql
-    depends_on:
-      kestra:
-        condition: service_started
+    networks:
+      - accidents_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d us_accidents"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   pgadmin:
     image: dpage/pgadmin4
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
-      - PGADMIN_DEFAULT_PASSWORD=root
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: root
     ports:
       - "8085:80"
+    networks:
+      - accidents_net
     depends_on:
       pgdatabase:
-        condition: service_started
+        condition: service_healthy
 
-  kestra_postgres:
+  # ── Airflow metadata database ────────────────────────────────────────────
+  airflow_postgres:
     image: postgres:18
-    volumes:
-      - kestra_postgres_data:/var/lib/postgresql
     environment:
-      POSTGRES_DB: kestra
-      POSTGRES_USER: kestra
-      POSTGRES_PASSWORD: k3str4
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql
+    networks:
+      - accidents_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Airflow init (runs once, then exits) ─────────────────────────────────
+  airflow_init:
+    image: apache/airflow:2.9.3
+    environment:
+      <<: *airflow-env
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    entrypoint: bash -c "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
+    networks:
+      - accidents_net
+    depends_on:
+      airflow_postgres:
+        condition: service_healthy
+
+  # ── Airflow webserver ────────────────────────────────────────────────────
+  airflow_webserver:
+    image: apache/airflow:2.9.3
+    environment:
+      <<: *airflow-env
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock   # DockerOperator needs this
+    ports:
+      - "8080:8080"
+    networks:
+      - accidents_net
+    command: webserver
+    depends_on:
+      airflow_init:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 10
 
-  kestra:
-    image: kestra/kestra:v1.1
-    pull_policy: always
-    user: "root"
-    command: server standalone
-    volumes:
-      - kestra_data:/app/storage
-      - /var/run/docker.sock:/var/run/docker.sock
-      - kestra_tmp:/tmp/kestra-wd
+  # ── Airflow scheduler ────────────────────────────────────────────────────
+  airflow_scheduler:
+    image: apache/airflow:2.9.3
     environment:
-      KESTRA_CONFIGURATION: |
-        datasources:
-          postgres:
-            url: jdbc:postgresql://kestra_postgres:5432/kestra
-            driverClassName: org.postgresql.Driver
-            username: kestra
-            password: k3str4
-        kestra:
-          server:
-            basicAuth:
-              username: "admin@kestra.io"
-              password: Admin1234!
-          repository:
-            type: postgres
-          storage:
-            type: local
-            local:
-              basePath: "/app/storage"
-          queue:
-            type: postgres
-          tasks:
-            tmpDir:
-              path: /tmp/kestra-wd/tmp
-          url: http://localhost:8080/
-    ports:
-      - "8080:8080"
-      - "8081:8081"
-    depends_on:
-      kestra_postgres:
-        condition: service_started
-
-  ingest:
-    image: python:3.12-slim
-    container_name: ingest
-    working_dir: /app
+      <<: *airflow-env
     volumes:
-      - ./ingest.py:/app/ingest.py
-      - ./requirements.txt:/app/requirements.txt
-      - ./data/US_Accidents_March23.csv:/app/us_accidents.csv
-    command: >
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-             python ingest.py --csv-file /app/us_accidents.csv --limit 1000000"
+      - ./dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock   # DockerOperator needs this
+    networks:
+      - accidents_net
+    command: scheduler
     depends_on:
-      pgdatabase:
-        condition: service_started
-
-  transform:
-    image: python:3.12-slim
-    container_name: transform
-    working_dir: /app
-    volumes:
-      - ./transform.py:/app/transform.py
-      - ./requirements.txt:/app/requirements.txt
-    command: >
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-             python transform.py"
-    depends_on:
-      ingest:
+      airflow_init:
         condition: service_completed_successfully
       pgdatabase:
-        condition: service_started
+        condition: service_healthy
