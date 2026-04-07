@@ -126,7 +126,7 @@ bash setup_env.sh
 
 This one-time setup step copies the CSV and pipeline scripts into the shared Docker volume:
 ```
-docker compose --profile setup up
+docker compose --profile setup up -d
 ```
 
 ---
@@ -141,48 +141,24 @@ The first startup takes a few minutes. Airflow initialises its database and crea
 
 ---
 
-### 7. Verify the data was loaded
-
-#### 7.1 Open pgAdmin
-* pgAdmin: http://localhost:8085
-  * User: `admin@admin.com`
-  * PW: `root`
-
-#### 7.2 Add New Server
-* **General**
-  * Name: `us_accidents`
-* **Connection**
-  * Host name/address: `pgdatabase`
-  * Port: `5432`
-  * Maintenance database: `us_accidents`
-  * Username: `root`
-  * Password: `root`
-
-#### 7.3 Data location
-You can now find the data in the **us_accidents** database:
-```
-Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
-```
-Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
-
----
-
-### 8. Workflow Orchestration (Airflow)
+### 7. Workflow Orchestration (Airflow)
 
 The pipeline is orchestrated using Apache Airflow. The DAG `us_accidents_pipeline` runs the ingestion and transformation steps sequentially and is scheduled to execute daily at 03:00 UTC.
 
-#### 8.1 Open the Airflow UI
+#### 7.1 Open the Airflow UI
 * Airflow: http://localhost:8080
   * User: `admin`
   * PW: `admin`
 
-#### 8.2 Trigger a manual run
+#### 7.2 Trigger a run
+
+**Option A — Manual run via UI:**
 1. Navigate to **DAGs** and find `us_accidents_pipeline`.
 2. Enable the DAG using the toggle on the left if it is paused.
 3. Click the **Run** button (▶) on the right to trigger a manual execution.
 4. Click on the DAG name, then open the **Graph** view to watch the `ingest → transform` tasks execute in sequence.
 
-#### 8.3 Trigger a backfill via CLI
+**Option B — Backfill via CLI:**
 
 **Linux / WSL / macOS / Windows PowerShell:**
 ```bash
@@ -192,14 +168,7 @@ docker compose exec airflow_scheduler \
   --end-date 2024-01-31
 ```
 
-
-#### 8.4 Verify the pipeline completed successfully
-Check that both tasks show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in pgAdmin under:
-```
-Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
-```
-
-#### 8.5 Run with a reduced row limit (for testing)
+#### 7.3 Run with a reduced row limit (for testing)
 The full dataset contains ~7 million rows and takes several minutes to ingest. For a quick smoke test, limit the number of rows via an Airflow Variable — no code changes required.
 
 ```
@@ -218,3 +187,31 @@ To switch back to the full dataset, delete the variable:
 ```
 docker compose exec airflow_scheduler airflow variables delete ingest_limit
 ```
+
+---
+
+### 8. Verify the pipeline completed successfully
+
+Check that both tasks show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in pgAdmin.
+
+#### 8.1 Open pgAdmin
+* pgAdmin: http://localhost:8085
+  * User: `admin@admin.com`
+  * PW: `root`
+
+#### 8.2 Add New Server
+* **General**
+  * Name: `us_accidents`
+* **Connection**
+  * Host name/address: `pgdatabase`
+  * Port: `5432`
+  * Maintenance database: `us_accidents`
+  * Username: `root`
+  * Password: `root`
+
+#### 8.3 Data location
+You can now find the data in the **us_accidents** database:
+```
+Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
+```
+Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
