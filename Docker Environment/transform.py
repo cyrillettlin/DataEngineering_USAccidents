@@ -134,11 +134,13 @@ def create_target_table(conn):
     );
     """
 
-    # Indexes that directly support Peter's analytical use case:
-    #   - filter by time period (start_time, start_year/month/hour)
-    #   - filter by location (state, city)
-    #   - filter by severity
-    # IF NOT EXISTS means re-running transform never errors on existing indexes.
+    """
+    index_queries is a list of CREATE INDEX SQL statements that get executed after the target table is created. Each one adds a database index on a column that's commonly used as a filter in analytical       
+    queries — start_time, start_year, start_month, start_hour, state, and severity.
+                                                                                                                                                                                                              
+    The purpose is query performance: without indexes, filtering a large accidents dataset (e.g. "accidents in California in 2022") requires a full table scan. With the indexes, the database can jump directly
+    to matching rows.
+    """
     index_queries = [
         f"CREATE INDEX IF NOT EXISTS idx_{TARGET_TABLE}_start_time  ON {TARGET_TABLE} (start_time);",
         f"CREATE INDEX IF NOT EXISTS idx_{TARGET_TABLE}_start_year  ON {TARGET_TABLE} (start_year);",
