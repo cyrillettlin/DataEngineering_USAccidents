@@ -215,3 +215,44 @@ You can now find the data in the **us_accidents** database:
 Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
 ```
 Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
+
+
+# Final presentation
+
+
+## Create JSON Key
+
+To authenticate your application with Google Cloud, you need to generate a **service account JSON key**.
+
+### 1. Open Google Cloud Console
+Go to: https://console.cloud.google.com/  
+Select your project, then open:
+
+**IAM & Admin → Service Accounts**
+
+### 2. Create (or select) a Service Account
+- Click **Create Service Account**
+- Enter a name and description
+- Click **Create and Continue**
+- Assign the required roles (depends on your use case)
+- Click **Done**
+
+### 3. Generate the JSON Key
+- Click on your service account
+- Go to the **Keys** tab
+- Click **Add Key → Create new key**
+- Select **JSON**
+- Click **Create**
+
+The key file will be downloaded automatically.
+
+### 4. Store the Key Securely
+- Do NOT commit the JSON file to Git
+- Keep it outside your repository
+- Restrict access to authorized users only
+
+### 5. Set Environment Variable
+
+#### macOS / Linux
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
