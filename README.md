@@ -217,9 +217,9 @@ Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
 Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
 
 
-## Google Cloud Setup (Final Presentation)
+## 
  
-### 1. Create a Service Account JSON Key
+### 1. Google Cloud Setup - Create a Service Account JSON Key
  
 1. Open https://console.cloud.google.com → **IAM & Admin → Service Accounts**
 2. Click **Create Service Account**, enter a name, assign roles, click **Done**.
@@ -228,18 +228,55 @@ Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
 > ⚠️ **Never commit the JSON key to Git.** Store it outside the repository.
  
 ```bash
-# macOS / Linux – set credentials environment variable
+# Linux / WSL / macOS
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
+```
+```powershell
+# Windows PowerShell
+$env:GOOGLE_APPLICATION_CREDENTIALS = "C:\path\to\key.json"
 ```
  
 ---
+ 
+### 2. Install Terraform
+ 
+Terraform ≥ 1.0 is required. Choose the method for your platform:
+ 
+**Linux (Ubuntu / Debian / WSL):**
+```bash
+sudo apt-get update && sudo apt-get install -y gnupg software-properties-common
+wget -O- https://apt.releases.hashicorp.com/gpg | \
+  gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+  https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+  sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt-get update && sudo apt-get install -y terraform
 ```
-
-### 2. Provision Infrastructure with Terraform
+ 
+**macOS (Homebrew):**
+```bash
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
+```
+ 
+**Windows PowerShell (Chocolatey):**
+```powershell
+choco install terraform
+```
+> If you don't have Chocolatey: https://chocolatey.org/install — or download the binary directly from https://developer.hashicorp.com/terraform/install and add it to your `PATH`.
+ 
+Verify the installation on all platforms:
+```bash
+terraform -version
+```
+ 
+---
+ 
+### 3. Provision Infrastructure with Terraform
  
 Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data warehouse).
  
-**Prerequisites:** Terraform ≥ 1.0, a GCP project with billing enabled, and a service account with `Storage Admin` + `BigQuery Admin` roles.
+**Required GCP roles for the service account:** `Storage Admin` + `BigQuery Admin`
  
 #### Provisioned resources
  
@@ -262,24 +299,49 @@ Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data 
  
 #### Steps
  
+**1. Navigate to the Terraform directory:**
 ```bash
+# Linux / WSL / macOS
 cd terraform
  
-# 1. Set your project and credentials in main.tf, or export as env vars:
-export TF_VAR_credentials="/path/to/key.json"
-export TF_VAR_project="your-gcp-project-id"
- 
-# 2. Initialise provider plugins
-terraform init
- 
-# 3. Preview changes
-terraform plan
- 
-# 4. Apply
-terraform apply   # type 'yes' when prompted
- 
-# 5. Tear down when done (avoids ongoing costs)
-terraform destroy # type 'yes' when prompted
+# Windows PowerShell
+cd terraform
 ```
  
-> **Note:** `gcs_bucket_name` must be globally unique. Change the default if the name is already taken.
+**2. Set your credentials and project ID:**
+ 
+```bash
+# Linux / WSL / macOS
+export TF_VAR_credentials="/path/to/key.json"
+export TF_VAR_project="your-gcp-project-id"
+```
+```powershell
+# Windows PowerShell
+$env:TF_VAR_credentials = "C:\path\to\key.json"
+$env:TF_VAR_project = "your-gcp-project-id"
+```
+> Alternatively, edit the `credentials` and `project` defaults directly in `main.tf`.
+ 
+**3. Initialise provider plugins:**
+```bash
+terraform init
+```
+ 
+**4. Preview planned changes:**
+```bash
+terraform plan
+```
+ 
+**5. Apply the configuration:**
+```bash
+terraform apply
+```
+Type `yes` when prompted. Terraform will create the GCS bucket and BigQuery dataset.
+ 
+**6. Tear down when no longer needed (avoids ongoing costs):**
+```bash
+terraform destroy
+```
+Type `yes` when prompted. The bucket will be force-deleted even if it still contains objects.
+ 
+> **Note:** `gcs_bucket_name` must be globally unique across all GCP projects. Update the default value in `main.tf` if the name is already taken.
