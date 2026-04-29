@@ -217,42 +217,69 @@ Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
 Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
 
 
-# Final presentation
-
-
-## Create JSON Key
-
-To authenticate your application with Google Cloud, you need to generate a **service account JSON key**.
-
-### 1. Open Google Cloud Console
-Go to: https://console.cloud.google.com/  
-Select your project, then open:
-
-**IAM & Admin → Service Accounts**
-
-### 2. Create (or select) a Service Account
-- Click **Create Service Account**
-- Enter a name and description
-- Click **Create and Continue**
-- Assign the required roles (depends on your use case)
-- Click **Done**
-
-### 3. Generate the JSON Key
-- Click on your service account
-- Go to the **Keys** tab
-- Click **Add Key → Create new key**
-- Select **JSON**
-- Click **Create**
-
-The key file will be downloaded automatically.
-
-### 4. Store the Key Securely
-- Do NOT commit the JSON file to Git
-- Keep it outside your repository
-- Restrict access to authorized users only
-
-### 5. Set Environment Variable
-
-#### macOS / Linux
+## Google Cloud Setup (Final Presentation)
+ 
+### 1. Create a Service Account JSON Key
+ 
+1. Open https://console.cloud.google.com → **IAM & Admin → Service Accounts**
+2. Click **Create Service Account**, enter a name, assign roles, click **Done**.
+3. Open the account → **Keys** tab → **Add Key → Create new key → JSON**.
+4. The key file downloads automatically.
+> ⚠️ **Never commit the JSON key to Git.** Store it outside the repository.
+ 
 ```bash
+# macOS / Linux – set credentials environment variable
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
+```
+ 
+---
+```
+
+### 2. Provision Infrastructure with Terraform
+ 
+Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data warehouse).
+ 
+**Prerequisites:** Terraform ≥ 1.0, a GCP project with billing enabled, and a service account with `Storage Admin` + `BigQuery Admin` roles.
+ 
+#### Provisioned resources
+ 
+| Resource | Default name | Location |
+|----------|-------------|----------|
+| GCS Bucket | `us_accidents_data_lake_bucket20260305` | `EU` |
+| BigQuery Dataset | `us_accidents_dataset` | `EU` |
+ 
+#### Variables
+ 
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `credentials` | *(path to JSON key)* | Service account key file |
+| `project` | *(your project ID)* | GCP project ID |
+| `region` | `europe-west6` | Provider region |
+| `location` | `EU` | Resource location |
+| `bq_dataset_name` | `us_accidents_dataset` | BigQuery dataset name |
+| `gcs_bucket_name` | `us_accidents_data_lake_bucket20260305` | GCS bucket name (must be globally unique) |
+| `gcs_storage_class` | `STANDARD` | Bucket storage class |
+ 
+#### Steps
+ 
+```bash
+cd terraform
+ 
+# 1. Set your project and credentials in main.tf, or export as env vars:
+export TF_VAR_credentials="/path/to/key.json"
+export TF_VAR_project="your-gcp-project-id"
+ 
+# 2. Initialise provider plugins
+terraform init
+ 
+# 3. Preview changes
+terraform plan
+ 
+# 4. Apply
+terraform apply   # type 'yes' when prompted
+ 
+# 5. Tear down when done (avoids ongoing costs)
+terraform destroy # type 'yes' when prompted
+```
+ 
+> **Note:** `gcs_bucket_name` must be globally unique. Change the default if the name is already taken.

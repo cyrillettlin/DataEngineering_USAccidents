@@ -30,7 +30,7 @@ variable "bq_dataset_name" {
 }
 
 variable "gcs_bucket_name" {
-  description = "My Storage Bucket Name"
+  description = "<Insert bucket name description here>"
   #Update the below to a unique bucket name. Must be changed!
   default     = "us_accidents_data_lake_bucket20260305"
 }
