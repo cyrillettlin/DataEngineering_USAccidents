@@ -67,6 +67,14 @@ DATA_MOUNT = Mount(
     read_only=False,
 )
 
+GCP_CREDENTIALS_PATH = "/Users/muellefa/.terraform/keys/my-cred.json"
+GCP_CREDENTIALS_MOUNT = Mount(
+    target="/tmp/gcp_credentials.json",
+    source=GCP_CREDENTIALS_PATH,
+    type="bind",
+    read_only=True,
+)
+
 
 # ── DAG definition ────────────────────────────────────────────────────────────
 
@@ -134,8 +142,11 @@ with DAG(
             f"{_upload_limit_flag} "
             f"{_object_name_flag}'"
         ),
-        environment=PG_ENV,
-        mounts=[DATA_MOUNT],
+        environment={
+            **PG_ENV,
+            "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/gcp_credentials.json",
+        },
+        mounts=[DATA_MOUNT, GCP_CREDENTIALS_MOUNT],
         extra_hosts={"host.docker.internal": "host-gateway"},
         network_mode="accidents_net",
         auto_remove="success",
