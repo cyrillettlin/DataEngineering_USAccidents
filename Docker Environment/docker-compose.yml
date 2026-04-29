@@ -51,10 +51,12 @@ services:
     volumes:
       - ./ingest.py:/src/ingest.py:ro
       - ./transform.py:/src/transform.py:ro
+      - ./upload_to_gcs.py:/src/upload_to_gcs.py:ro
       - ./requirements.txt:/src/requirements.txt:ro
       - accidents_data:/data
     command: >
       sh -c "cp /src/ingest.py /data/ingest.py &&
+             cp /src/upload_to_gcs.py /data/upload_to_gcs.py &&
              cp /src/transform.py /data/transform.py &&
              cp /src/requirements.txt /data/requirements.txt &&
              echo 'Scripts loaded.'"

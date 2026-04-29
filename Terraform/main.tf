@@ -31,9 +31,11 @@ resource "google_storage_bucket" "data-lake-bucket" {
   }
 }
 
-
-
 resource "google_bigquery_dataset" "demo_dataset" {
   dataset_id = var.bq_dataset_name
   location   = var.location
+}
+
+output "gcs_bucket_name" {
+  value = var.gcs_bucket_name
 }
