@@ -67,7 +67,9 @@ DATA_MOUNT = Mount(
     read_only=False,
 )
 
-GCP_CREDENTIALS_PATH = "/Users/muellefa/.terraform/keys/my-cred.json"
+GCP_CREDENTIALS_PATH = read_airflow_variable(
+    "gcp_credentials_path", "<Insert path to your key file> *.json"
+)
 GCP_CREDENTIALS_MOUNT = Mount(
     target="/tmp/gcp_credentials.json",
     source=GCP_CREDENTIALS_PATH,
