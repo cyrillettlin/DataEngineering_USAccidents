@@ -44,6 +44,14 @@ _limit_raw = Variable.get("ingest_limit", default_var="").strip()
 INGEST_LIMIT = int(_limit_raw) if _limit_raw else None
 _limit_flag = f"--limit {INGEST_LIMIT}" if INGEST_LIMIT else ""
 
+#── GCS upload config ─────────────────────────────────────────────────────────
+GCS_BUCKET = Variable.get("gcs_bucket", default_var="your-bucket-name")
+GCS_TABLE = Variable.get("gcs_table", default_var="accidents")
+
+_upload_limit_raw = Variable.get("upload_limit", default_var="").strip()
+UPLOAD_LIMIT = int(_upload_limit_raw) if _upload_limit_raw else None
+_upload_limit_flag = f"--limit {UPLOAD_LIMIT}" if UPLOAD_LIMIT else ""
+
 # ── Shared volume mount ───────────────────────────────────────────────────────
 DATA_MOUNT = Mount(
     target="/data",
@@ -109,4 +117,24 @@ with DAG(
         tty=False,
     )
 
-    ingest >> transform
+    upload_to_gcs = DockerOperator(
+        task_id="upload_to_gcs",
+        image="python:3.12-slim",
+        command=(
+            f"sh -c 'pip install --no-cache-dir -r /data/requirements.txt -q && "
+            f"python /data/upload_to_gcs.py "
+            f"--bucket {GCS_BUCKET} "
+            f"--table {GCS_TABLE} "
+            f"{_upload_limit_flag}'"
+        ),
+        environment=PG_ENV,
+        mounts=[DATA_MOUNT],
+        extra_hosts={"host.docker.internal": "host-gateway"},
+        network_mode="accidents_net",
+        auto_remove="success",
+        docker_url="unix://var/run/docker.sock",
+        mount_tmp_dir=False,
+        tty=False,
+    )
+
+    ingest >> transform >> upload_to_gcs
