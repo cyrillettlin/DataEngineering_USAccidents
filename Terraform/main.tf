@@ -31,6 +31,12 @@ resource "google_storage_bucket" "data-lake-bucket" {
   }
 }
 
+resource "google_storage_bucket_iam_member" "gcs_uploader" {
+  bucket = google_storage_bucket.data-lake-bucket.name
+  role   = "roles/storage.objectCreator"
+  member = "serviceAccount:${jsondecode(file(var.credentials)).client_email}"
+}
+
 resource "google_bigquery_dataset" "demo_dataset" {
   dataset_id = var.bq_dataset_name
   location   = var.location
