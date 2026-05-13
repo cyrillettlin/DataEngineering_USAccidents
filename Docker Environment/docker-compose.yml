@@ -119,6 +119,10 @@ services:
     image: apache/airflow:2.9.3
     environment:
       <<: *airflow-env
+      GCP_CREDENTIALS_PATH: ${GCP_CREDENTIALS_PATH}
+      BQ_PROJECT: ${BQ_PROJECT}
+      BQ_DATASET: ${BQ_DATASET}
+      GCS_BUCKET: ${GCS_BUCKET}
     volumes: *airflow-volumes
     # group_add: adds the host 'docker' group GID to the container user so it
     # can read /var/run/docker.sock on Linux/WSL without running as root.
@@ -126,7 +130,18 @@ services:
     # setting is simply ignored — so it is safe on all platforms.
     group_add:
       - "${DOCKER_GID:-0}"
-    entrypoint: bash -c "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
+    entrypoint: >-
+      bash -c "
+      airflow db migrate &&
+      airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com &&
+      airflow variables set bq_dataset $$BQ_DATASET &&
+      airflow variables set bq_project $$BQ_PROJECT &&
+      airflow variables set bq_skip_upstream_sensor true &&
+      airflow variables set gcp_credentials_path $$GCP_CREDENTIALS_PATH &&
+      airflow variables set gcs_bucket $$GCS_BUCKET &&
+      airflow variables set ingest_limit 50000 &&
+      airflow variables set upload_limit 50000
+      "
     networks:
       - accidents_net
     depends_on:

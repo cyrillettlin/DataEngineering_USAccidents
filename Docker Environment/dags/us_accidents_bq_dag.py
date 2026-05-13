@@ -27,7 +27,7 @@ def read_airflow_variable(name, default=""):
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-BQ_PROJECT = read_airflow_variable("bq_project", "solar-solution-489312-d3")
+BQ_PROJECT = read_airflow_variable("bq_project", "solar-solution-******-**")
 BQ_DATASET = read_airflow_variable("bq_dataset", "us_accidents_dataset")
 GCS_BUCKET = read_airflow_variable("gcs_bucket", "your-bucket-name")
 GCS_PREFIX = read_airflow_variable("gcs_prefix", "exports/*.csv")
