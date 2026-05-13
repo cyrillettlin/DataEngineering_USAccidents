@@ -101,28 +101,7 @@ Expand-Archive -Path data\us-accidents.zip -DestinationPath data
 
 ---
 
-### 4. Configure the environment
-
-Run the setup script once. It detects your OS and writes a `.env` file with the correct Docker socket permissions and Postgres hostname for your platform.
-
-**Linux / WSL / macOS / Windows PowerShell:**
-```bash
-bash setup_env.sh
-```
-
-> If you get a `\r: command not found` error on WSL, the file has Windows line endings. Fix with:
-> ```bash
-> sed -i 's/\r//' setup_env.sh && bash setup_env.sh
-> ```
-
-| Platform | DOCKER_GID | PGHOST |
-|---|---|---|
-| Linux / WSL | GID of `/var/run/docker.sock` | `pgdatabase` |
-| Windows / macOS | `0` (not needed) | `host.docker.internal` |
-
----
-
-### 5. Google Cloud Setup — Create a Service Account JSON Key
+### 4. Google Cloud Setup — Create a Service Account JSON Key
 
 The DAGs upload data to GCS and BigQuery, so GCP infrastructure must be provisioned **before** starting the containers.
 
@@ -135,7 +114,7 @@ The DAGs upload data to GCS and BigQuery, so GCP infrastructure must be provisio
 
 ---
 
-### 6. Install Terraform
+### 5. Install Terraform
 
 Terraform ≥ 1.0 is required. Choose the method for your platform:
 
@@ -169,7 +148,7 @@ terraform -version
 
 ---
 
-### 7. Provision Infrastructure with Terraform
+### 6. Provision Infrastructure with Terraform
 
 Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data warehouse).
 
@@ -232,15 +211,38 @@ Type `yes` when prompted. The bucket will be force-deleted even if it still cont
 
 ---
 
-### 8. Load data and scripts into the Docker volume
+### 7. Configure the environment
 
-Navigate back to the Docker directory, then run this one-time setup step to copy the CSV and pipeline scripts into the shared Docker volume:
+Now that `variables.tf` is configured, run the setup script once. It detects your OS, writes a `.env` file with the correct Docker socket permissions and Postgres hostname for your platform, and reads the GCP credentials, project, dataset, and bucket values directly from `variables.tf`.
+
+Navigate back to the Docker directory first:
 ```bash
 cd ../Docker\ Environment   # Linux / WSL / macOS
 ```
 ```powershell
 cd "..\Docker Environment"  # Windows PowerShell
 ```
+
+Then run:
+```bash
+bash setup_env.sh
+```
+
+> If you get a `\r: command not found` error on WSL, the file has Windows line endings. Fix with:
+> ```bash
+> sed -i 's/\r//' setup_env.sh && bash setup_env.sh
+> ```
+
+| Platform | DOCKER_GID | PGHOST |
+|---|---|---|
+| Linux / WSL | GID of `/var/run/docker.sock` | `pgdatabase` |
+| Windows / macOS | `0` (not needed) | `host.docker.internal` |
+
+---
+
+### 8. Load data and scripts into the Docker volume
+
+Run this one-time setup step to copy the CSV and pipeline scripts into the shared Docker volume:
 ```
 docker compose --profile setup up -d
 ```
