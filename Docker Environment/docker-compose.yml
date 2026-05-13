@@ -136,7 +136,7 @@ services:
       airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com &&
       airflow variables set bq_dataset $$BQ_DATASET &&
       airflow variables set bq_project $$BQ_PROJECT &&
-      airflow variables set bq_skip_upstream_sensor true &&
+      airflow variables set bq_skip_upstream_sensor false &&
       airflow variables set gcp_credentials_path $$GCP_CREDENTIALS_PATH &&
       airflow variables set gcs_bucket $$GCS_BUCKET &&
       airflow variables set ingest_limit 50000 &&
