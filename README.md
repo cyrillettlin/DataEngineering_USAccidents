@@ -168,7 +168,7 @@ Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data 
 | `region` | `europe-west6` | Provider region |
 | `location` | `EU` | Resource location |
 | `bq_dataset_name` | `us_accidents_dataset` | BigQuery dataset name |
-| `gcs_bucket_name` | `us_accidents_data_lake_bucket20260305` | GCS bucket name (must be globally unique) |
+| `gcs_bucket_name` | `us_accidents_data_lake_bucket20260305` | GCS bucket name (must be globally unique, must be changed) |
 | `gcs_storage_class` | `STANDARD` | Bucket storage class |
 
 #### Steps
