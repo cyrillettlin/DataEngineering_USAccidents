@@ -5,6 +5,7 @@ Reads CSVs exported by pipeline 1 (gs://<bucket>/exports/*.csv) via an external 
 then creates cleaned, partitioned, and partitioned+clustered native BigQuery tables.
 """
 
+
 import argparse
 import logging
 import sys

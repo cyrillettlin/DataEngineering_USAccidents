@@ -20,7 +20,6 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.sensors.external_task import ExternalTaskSensor
 from docker.types import Mount
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def read_airflow_variable(name, default=""):

@@ -3,6 +3,7 @@
 # Detects the current platform and writes a .env file with the correct
 # values for DOCKER_GID and PGHOST.
 #
+#
 # Run once before `docker compose up`:
 #   bash setup_env.sh
 set -euo pipefail

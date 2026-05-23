@@ -1,5 +1,5 @@
 # setup_env.ps1
-# Windows equivalent of setup_env.sh (only variable extraction + .env generation)
+# Windows equivalent of setup_env.sh (for credentials)
 $ErrorActionPreference = "Stop"
 
 $EnvFile = ".env"

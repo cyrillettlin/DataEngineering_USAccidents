@@ -8,6 +8,7 @@ import psycopg2
 from google.cloud import storage
 
 
+
 DB_CONFIG = {
     "host": os.getenv("PGHOST", "pgdatabase"),
     "port": int(os.getenv("PGPORT", 5432)),
