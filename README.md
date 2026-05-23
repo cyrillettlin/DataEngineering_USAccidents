@@ -223,7 +223,7 @@ cd ../Docker\ Environment   # Linux / WSL / macOS
 cd "..\Docker Environment"  # Windows PowerShell
 ```
 
-Then run:
+Then run (Linux, MacOS):
 ```bash
 bash setup_env.sh
 ```
