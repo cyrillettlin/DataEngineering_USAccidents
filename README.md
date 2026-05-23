@@ -174,11 +174,14 @@ Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data 
 #### Steps
 
 **1. Navigate to the Terraform directory:**
-```bash
-# Linux / WSL / macOS
-cd ../Terraform
 
-# Windows PowerShell
+**Linux / WSL / macOS**
+```bash
+cd ../Terraform
+```
+
+**Windows PowerShell**
+```bash
 cd ..\Terraform
 ```
 
@@ -216,11 +219,14 @@ Type `yes` when prompted. The bucket will be force-deleted even if it still cont
 Now that `variables.tf` is configured, run the setup script once. It detects your OS, writes a `.env` file with the correct Docker socket permissions and Postgres hostname for your platform, and reads the GCP project, dataset, and bucket values directly from `variables.tf`.
 
 Navigate back to the Docker directory first:
+
+**Linux / WSL / macOS**
 ```bash
-cd ../Docker\ Environment   # Linux / WSL / macOS
+cd ../Docker\ Environment   
 ```
+**Windows PowerShell**
 ```powershell
-cd "..\Docker Environment"  # Windows PowerShell
+cd "..\Docker Environment"  
 ```
 
 Then run (Linux, MacOS):
