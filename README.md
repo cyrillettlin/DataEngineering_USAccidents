@@ -204,7 +204,7 @@ terraform apply
 ```
 Type `yes` when prompted. Terraform will create the GCS bucket and BigQuery dataset.
 
-**6. Don't forget to tear down the project when you are done! (avoids ongoing costs):**
+**Important: Don't forget to tear down the project when you are done! (avoids ongoing costs):**
 ```bash
 terraform destroy
 ```
