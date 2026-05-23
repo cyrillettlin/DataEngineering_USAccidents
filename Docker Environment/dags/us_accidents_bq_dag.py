@@ -6,9 +6,11 @@ loads the exported CSV data into BigQuery: external table → cleaned → partit
 → partitioned+clustered.
 
 Scheduled daily at 06:00 UTC (3 h after pipeline 1 at 03:00 UTC).
+
+GCP credentials are expected at /data/service_account.json inside the Docker
+volume (loaded once via `docker compose --profile setup up -d`).
 """
 
-import os
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -27,14 +29,15 @@ def read_airflow_variable(name, default=""):
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-BQ_PROJECT = read_airflow_variable("bq_project", "solar-solution-******-**")
+BQ_PROJECT = read_airflow_variable("bq_project", "your-gcp-project-id")
 BQ_DATASET = read_airflow_variable("bq_dataset", "us_accidents_dataset")
 GCS_BUCKET = read_airflow_variable("gcs_bucket", "your-bucket-name")
 GCS_PREFIX = read_airflow_variable("gcs_prefix", "exports/*.csv")
-GCP_CREDENTIALS_PATH = read_airflow_variable(
-    "gcp_credentials_path", "<Insert path to your key file> *.json"
-)
 SKIP_UPSTREAM_SENSOR = read_airflow_variable("bq_skip_upstream_sensor", "false").lower() == "true"
+
+# Credentials are copied into the volume by the credentials_loader setup service.
+# The path is fixed and platform-independent — no bind mount needed.
+GCP_CREDENTIALS_PATH = "/data/service_account.json"
 
 
 # ── Mounts ────────────────────────────────────────────────────────────────────
@@ -44,13 +47,6 @@ DATA_MOUNT = Mount(
     source="dockerenvironment_accidents_data",
     type="volume",
     read_only=False,
-)
-
-GCP_CREDENTIALS_MOUNT = Mount(
-    target="/tmp/gcp_credentials.json",
-    source=GCP_CREDENTIALS_PATH,
-    type="bind",
-    read_only=True,
 )
 
 
@@ -98,12 +94,13 @@ with DAG(
             f"--project {BQ_PROJECT} "
             f"--dataset {BQ_DATASET} "
             f"--bucket {GCS_BUCKET} "
-            f"--gcs-prefix \"{GCS_PREFIX}\"'"
+            f"--gcs-prefix \"{GCS_PREFIX}\" "
+            f"--credentials {GCP_CREDENTIALS_PATH}'"  # ← explicit, no ambiguity
         ),
         environment={
-            "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/gcp_credentials.json",
+            "GOOGLE_APPLICATION_CREDENTIALS": GCP_CREDENTIALS_PATH,
         },
-        mounts=[DATA_MOUNT, GCP_CREDENTIALS_MOUNT],
+        mounts=[DATA_MOUNT],
         extra_hosts={"host.docker.internal": "host-gateway"},
         network_mode="accidents_net",
         auto_remove="success",

@@ -5,7 +5,6 @@
 #
 # Run once before `docker compose up`:
 #   bash setup_env.sh
-
 set -euo pipefail
 
 ENV_FILE=".env"
@@ -29,39 +28,30 @@ tf_default() {
 
 # ── Detect platform ───────────────────────────────────────────────────────────
 OS="$(uname -s)"
-
 case "$OS" in
   Linux*)
     # Native Linux or WSL2 — read the actual GID of the Docker socket.
     # The Airflow containers are added to this group so they can access
     # /var/run/docker.sock without running as root.
     DOCKER_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo 0)"
-
     # On Linux the DockerOperator containers join accidents_net, so they
     # can reach pgdatabase by its service name directly.
     PGHOST="pgdatabase"
-
     echo "[setup_env] Platform: Linux/WSL  |  DOCKER_GID=${DOCKER_GID}  |  PGHOST=${PGHOST}"
     ;;
-
   Darwin*)
     # macOS Docker Desktop — socket is a proxy, GID not needed.
     DOCKER_GID="0"
-
     # host.docker.internal resolves to the Docker Desktop host on Mac.
     PGHOST="host.docker.internal"
-
     echo "[setup_env] Platform: macOS  |  DOCKER_GID=${DOCKER_GID}  |  PGHOST=${PGHOST}"
     ;;
-
   MINGW*|MSYS*|CYGWIN*)
     # Windows Git Bash / WSL1 fallback
     DOCKER_GID="0"
     PGHOST="host.docker.internal"
-
     echo "[setup_env] Platform: Windows  |  DOCKER_GID=${DOCKER_GID}  |  PGHOST=${PGHOST}"
     ;;
-
   *)
     echo "[setup_env] Unknown platform '$OS', using safe defaults."
     DOCKER_GID="0"
@@ -71,14 +61,12 @@ esac
 
 # ── Extract Airflow variable values from variables.tf ─────────────────────────
 if [[ -f "$TF_VARS_FILE" ]]; then
-  GCP_CREDENTIALS_PATH="$(tf_default credentials)"
   BQ_PROJECT="$(tf_default project)"
   BQ_DATASET="$(tf_default bq_dataset_name)"
   GCS_BUCKET="$(tf_default gcs_bucket_name)"
   echo "[setup_env] Extracted Airflow variables from variables.tf"
 else
   echo "[setup_env] WARNING: variables.tf not found at ${TF_VARS_FILE} — Airflow variables will be empty."
-  GCP_CREDENTIALS_PATH=""
   BQ_PROJECT=""
   BQ_DATASET=""
   GCS_BUCKET=""
@@ -100,7 +88,8 @@ DOCKER_GID=${DOCKER_GID}
 PGHOST=${PGHOST}
 
 # Airflow variables sourced from Terraform/variables.tf.
-GCP_CREDENTIALS_PATH=${GCP_CREDENTIALS_PATH}
+# GCP credentials are loaded into the Docker volume via the credentials_loader
+# setup profile and are always available at /data/service_account.json.
 BQ_PROJECT=${BQ_PROJECT}
 BQ_DATASET=${BQ_DATASET}
 GCS_BUCKET=${GCS_BUCKET}

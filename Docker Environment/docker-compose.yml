@@ -65,6 +65,15 @@ services:
     profiles:
       - setup
 
+  credentials_loader:
+    image: alpine:3
+    volumes:
+      - ../Terraform/service_account.json:/src/service_account.json:ro
+      - accidents_data:/data
+    command: sh -c "cp /src/service_account.json /data/service_account.json && echo 'Credentials loaded.'"
+    profiles:
+      - setup
+
   # ── Application database ──────────────────────────────────────────────────
   pgdatabase:
     image: postgres:18
@@ -119,7 +128,6 @@ services:
     image: apache/airflow:2.9.3
     environment:
       <<: *airflow-env
-      GCP_CREDENTIALS_PATH: ${GCP_CREDENTIALS_PATH}
       BQ_PROJECT: ${BQ_PROJECT}
       BQ_DATASET: ${BQ_DATASET}
       GCS_BUCKET: ${GCS_BUCKET}
@@ -137,7 +145,7 @@ services:
       airflow variables set bq_dataset $$BQ_DATASET &&
       airflow variables set bq_project $$BQ_PROJECT &&
       airflow variables set bq_skip_upstream_sensor false &&
-      airflow variables set gcp_credentials_path $$GCP_CREDENTIALS_PATH &&
+      airflow variables set gcp_credentials_path /data/service_account.json &&
       airflow variables set gcs_bucket $$GCS_BUCKET &&
       airflow variables set ingest_limit 50000 &&
       airflow variables set upload_limit 50000

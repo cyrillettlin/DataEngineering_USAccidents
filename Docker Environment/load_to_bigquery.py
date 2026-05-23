@@ -166,8 +166,8 @@ def parse_args():
     )
     parser.add_argument(
         "--credentials",
-        default="/tmp/gcp_credentials.json",
-        help="Path to service account JSON key (default: /tmp/gcp_credentials.json)",
+        default="/data/service_account.json",  # ← was /tmp/gcp_credentials.json
+        help="Path to service account JSON key (default: /data/service_account.json)",
     )
     return parser.parse_args()
 

@@ -41,11 +41,6 @@ _limit_flag = f"--limit {INGEST_LIMIT}" if INGEST_LIMIT else ""
 
 
 # ── GCS upload config ─────────────────────────────────────────────────────────
-# Example:
-# cd ../../terraform
-# terraform apply
-# BUCKET_NAME=$(terraform output -raw gcs_bucket_name)
-# docker compose exec airflow_scheduler airflow variables set gcs_bucket "$BUCKET_NAME"
 
 GCS_BUCKET = read_airflow_variable("gcs_bucket", "your-bucket-name")
 GCS_TABLE = read_airflow_variable("gcs_table", "accidents")
@@ -59,22 +54,14 @@ _object_name_flag = f"--object-name {GCS_OBJECT_NAME}" if GCS_OBJECT_NAME else "
 
 
 # ── Shared volume mount ───────────────────────────────────────────────────────
+# The credentials_loader setup service copies service_account.json into this
+# volume at /data/service_account.json. No separate bind mount is needed.
 
 DATA_MOUNT = Mount(
     target="/data",
     source="dockerenvironment_accidents_data",
     type="volume",
     read_only=False,
-)
-
-GCP_CREDENTIALS_PATH = read_airflow_variable(
-    "gcp_credentials_path", "<Insert path to your key file> *.json"
-)
-GCP_CREDENTIALS_MOUNT = Mount(
-    target="/tmp/gcp_credentials.json",
-    source=GCP_CREDENTIALS_PATH,
-    type="bind",
-    read_only=True,
 )
 
 
@@ -146,9 +133,9 @@ with DAG(
         ),
         environment={
             **PG_ENV,
-            "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/gcp_credentials.json",
+            "GOOGLE_APPLICATION_CREDENTIALS": "/data/service_account.json",
         },
-        mounts=[DATA_MOUNT, GCP_CREDENTIALS_MOUNT],
+        mounts=[DATA_MOUNT],
         extra_hosts={"host.docker.internal": "host-gateway"},
         network_mode="accidents_net",
         auto_remove="success",

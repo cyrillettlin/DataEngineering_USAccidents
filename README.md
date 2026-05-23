@@ -108,9 +108,9 @@ The DAGs upload data to GCS and BigQuery, so GCP infrastructure must be provisio
 1. Open https://console.cloud.google.com → **IAM & Admin → Service Accounts**
 2. Click **Create Service Account**, enter a name, assign roles (`Storage Admin` + `BigQuery Admin`), click **Done**.
 3. Open the account → **Keys** tab → **Add Key → Create new key → JSON**.
-4. The key file downloads automatically.
+4. The key file downloads automatically. **Rename it to `service_account.json`** and place it inside the `Terraform/` directory.
 
-> ⚠️ **Never commit the JSON key to Git.** Store it outside the repository.
+> ⚠️ **Never commit the JSON key to Git.** The `Terraform/` directory is listed in `.gitignore` for this reason — double-check before pushing.
 
 ---
 
@@ -163,7 +163,7 @@ Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `credentials` | *(path to JSON key)* | Service account key file |
+| `credentials` | `./service_account.json` | Service account key file (relative to `Terraform/`) |
 | `project` | *(your project ID)* | GCP project ID |
 | `region` | `europe-west6` | Provider region |
 | `location` | `EU` | Resource location |
@@ -182,8 +182,8 @@ cd ../Terraform
 cd ..\Terraform
 ```
 
-**2. Set your credentials and project ID:**
-Edit the `credentials` and `project` defaults directly in `variables.tf`.
+**2. Set your project ID and bucket name:**
+The `credentials` default is already set to `./service_account.json` — this matches the file you placed in the `Terraform/` directory in step 4. Update `project` to your GCP project ID and `gcs_bucket_name` to a globally unique name in `variables.tf`.
 
 **3. Initialise provider plugins:**
 ```bash
@@ -201,7 +201,7 @@ terraform apply
 ```
 Type `yes` when prompted. Terraform will create the GCS bucket and BigQuery dataset.
 
-**6. Dont forget to tear down the project, when you are done! (avoids ongoing costs):**
+**6. Don't forget to tear down the project when you are done! (avoids ongoing costs):**
 ```bash
 terraform destroy
 ```
@@ -213,7 +213,7 @@ Type `yes` when prompted. The bucket will be force-deleted even if it still cont
 
 ### 7. Configure the environment
 
-Now that `variables.tf` is configured, run the setup script once. It detects your OS, writes a `.env` file with the correct Docker socket permissions and Postgres hostname for your platform, and reads the GCP credentials, project, dataset, and bucket values directly from `variables.tf`.
+Now that `variables.tf` is configured, run the setup script once. It detects your OS, writes a `.env` file with the correct Docker socket permissions and Postgres hostname for your platform, and reads the GCP project, dataset, and bucket values directly from `variables.tf`.
 
 Navigate back to the Docker directory first:
 ```bash
@@ -224,6 +224,8 @@ cd "..\Docker Environment"  # Windows PowerShell
 ```
 
 Then run:
+
+**Linux / WSL / macOS:**
 ```bash
 bash setup_env.sh
 ```
@@ -233,6 +235,11 @@ bash setup_env.sh
 > sed -i 's/\r//' setup_env.sh && bash setup_env.sh
 > ```
 
+**Windows PowerShell:**
+```powershell
+.\setup_env.ps1
+```
+
 | Platform | DOCKER_GID | PGHOST |
 |---|---|---|
 | Linux / WSL | GID of `/var/run/docker.sock` | `pgdatabase` |
@@ -240,12 +247,22 @@ bash setup_env.sh
 
 ---
 
-### 8. Load data and scripts into the Docker volume
+### 8. Load data, scripts, and credentials into the Docker volume
 
-Run this one-time setup step to copy the CSV and pipeline scripts into the shared Docker volume:
+Run this one-time setup step to copy the CSV, pipeline scripts, and GCP credentials into the shared Docker volume:
 ```
 docker compose --profile setup up -d
 ```
+
+This runs three setup services:
+
+| Service | What it copies |
+|---------|---------------|
+| `data_loader` | `US_Accidents_March23.csv` → `/data/us_accidents.csv` |
+| `script_loader` | Pipeline scripts and `requirements.txt` → `/data/` |
+| `credentials_loader` | `../Terraform/service_account.json` → `/data/service_account.json` |
+
+The credentials are stored inside the Docker volume and referenced at the fixed path `/data/service_account.json` by the DAGs — no platform-specific path configuration required.
 
 ---
 
@@ -289,7 +306,7 @@ docker compose exec airflow_scheduler \
 #### 10.3 Run with a reduced row limit (for testing)
 The full dataset contains ~7 million rows and takes several minutes to ingest. For a quick smoke test, limit the number of rows via an Airflow Variable — no code changes required.
 
-**Via the Airflow UI:** Admin → Variables → Add → Key: `ingest_limit` and `upload_limit` , Value: `50000`
+**Via the Airflow UI:** Admin → Variables → Add → Key: `ingest_limit` and `upload_limit`, Value: `50000`
 
 | Value | Rows | Approximate duration |
 |-------|------|----------------------|
@@ -297,25 +314,26 @@ The full dataset contains ~7 million rows and takes several minutes to ingest. F
 | `100000` | 100k | ~1 minute |
 | *(not set)* | all ~7M | production mode |
 
-To switch back to the full dataset, delete the variable `ingest_limit` and `upload_limit` in airflow.
+To switch back to the full dataset, delete the variables `ingest_limit` and `upload_limit` in Airflow.
 
 ---
 
 ### 11. Verify the pipeline completed successfully
- 
+
 The project uses two Airflow DAGs that run sequentially:
- 
+
 | DAG | Schedule | Description |
 |-----|----------|-------------|
 | `us_accidents_pipeline` | 03:00 UTC | Ingests CSV → Postgres, exports to GCS |
 | `us_accidents_bq_pipeline` | 06:00 UTC | Loads GCS exports → BigQuery |
- 
+
 Check that all tasks in both DAGs show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in all three destinations described below.
- 
+
 #### 11.1 Open pgAdmin
 * pgAdmin: http://localhost:8085
   * User: `admin@admin.com`
   * PW: `root`
+
 #### 11.2 Add New Server
 * **General**
   * Name: `us_accidents`
@@ -325,43 +343,46 @@ Check that all tasks in both DAGs show a **dark green** (success) status in the 
   * Maintenance database: `us_accidents`
   * Username: `root`
   * Password: `root`
+
 #### 11.3 Data location in pgAdmin
 You can now find the data in the **us_accidents** database:
 ```
 Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
 ```
 Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
- 
+
 #### 11.4 Verify data in GCS (Data Lake)
- 
+
 The `upload_to_gcs` task exports the `accidents` table as a timestamped CSV into the `exports/` folder of your bucket. The file follows the naming pattern `accidents_<YYYYMMDD_HHMMSS>.csv`.
- 
+
 1. Open https://console.cloud.google.com → **Cloud Storage → Buckets**
 2. Navigate to your bucket (e.g. `us_accidents_data_lake_bucket20260305`).
 3. Open the `exports/` folder and confirm a file named `accidents_<timestamp>.csv` is present with a non-zero file size.
+
 Alternatively, verify via the `gcloud` CLI:
 ```bash
 gcloud storage ls gs://us_accidents_data_lake_bucket20260305/exports/
 ```
- 
+
 #### 11.5 Verify data in BigQuery (Data Warehouse)
- 
+
 The `load_to_bigquery` task creates four tables in the `us_accidents_dataset` dataset:
- 
+
 | Table | Description |
 |-------|-------------|
 | `external_accidents_raw` | External table pointing directly to the GCS CSV(s) |
 | `accidents_cleaned` | Native table with correct data types |
 | `accidents_partitioned` | Partitioned by `DATE(start_time)` |
 | `accidents_partitioned_clustered` | Partitioned by `DATE(start_time)`, clustered by `state`, `severity`, `city` |
- 
+
 1. Open https://console.cloud.google.com → **BigQuery**
 2. In the Explorer panel, expand your project and navigate to the dataset `us_accidents_dataset`.
 3. Confirm all four tables listed above are present.
 4. Open `accidents_partitioned_clustered` and click **Preview** to confirm rows are present.
+
 Alternatively, run a quick row count query in the BigQuery editor:
 ```sql
 SELECT COUNT(*) AS row_count
 FROM `your_project_id.us_accidents_dataset.accidents_partitioned_clustered`;
 ```
- Replace `your_project_id` with your actual GCP project ID. A successful pipeline run will return a row count greater than zero.
+Replace `your_project_id` with your actual GCP project ID. A successful pipeline run will return a row count greater than zero.
