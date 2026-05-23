@@ -302,14 +302,13 @@ To switch back to the full dataset, delete the variable `ingest_limit` and `uplo
 ---
 
 ### 11. Verify the pipeline completed successfully
-
-Check that both tasks show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in pgAdmin.
-
+ 
+Check that both tasks show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in all three destinations: pgAdmin (local), GCS (data lake), and BigQuery (data warehouse).
+ 
 #### 11.1 Open pgAdmin
 * pgAdmin: http://localhost:8085
   * User: `admin@admin.com`
   * PW: `root`
-
 #### 11.2 Add New Server
 * **General**
   * Name: `us_accidents`
@@ -319,10 +318,34 @@ Check that both tasks show a **dark green** (success) status in the Airflow UI. 
   * Maintenance database: `us_accidents`
   * Username: `root`
   * Password: `root`
-
-#### 11.3 Data location
+#### 11.3 Data location in pgAdmin
 You can now find the data in the **us_accidents** database:
 ```
 Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
 ```
+Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
+ 
+#### 11.4 Verify data in GCS (Data Lake)
+ 
+1. Open https://console.cloud.google.com → **Cloud Storage → Buckets**
+2. Navigate to your bucket (e.g. `us_accidents_data_lake_bucket20260305`).
+3. Confirm that the expected output files (e.g. `us_accidents_raw.csv` and/or `us_accidents_transformed.csv`) are present and have a non-zero file size.
+Alternatively, verify via the `gcloud` CLI:
+```bash
+gcloud storage ls gs://us_accidents_data_lake_bucket20260305/
+```
+ 
+#### 11.5 Verify data in BigQuery (Data Warehouse)
+ 
+1. Open https://console.cloud.google.com → **BigQuery**
+2. In the Explorer panel, expand your project and navigate to the dataset `us_accidents_dataset`.
+3. Open the `accidents` table and click **Preview** to confirm rows are present.
+Alternatively, run a quick row count query in the BigQuery editor:
+```sql
+SELECT COUNT(*) AS row_count
+FROM `your_project_id.us_accidents_dataset.accidents`;
+```
+ 
+Replace `your_project_id` with your actual GCP project ID. A successful pipeline run will return a row count greater than zero.
+
 Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
