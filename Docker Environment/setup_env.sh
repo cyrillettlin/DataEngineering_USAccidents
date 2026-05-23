@@ -107,4 +107,4 @@ GCS_BUCKET=${GCS_BUCKET}
 ENVEOF
 
 echo "[setup_env] Written ${ENV_FILE}."
-echo "[setup_env] You can now run: docker compose up -d"
+echo "[setup_env] You can now run: docker compose --profile setup up -d"

@@ -1,5 +1,6 @@
 variable "credentials" {
   description = "<Insert your description here>"
+  #Update the path below to your .json key. Must be changed!
   default     = "<Insert path to your key file> *.json"
   #ex: if you have a directory where this file is called keys with your service account json file
   #saved there as my-creds.json you could use default = "./keys/my-creds.json"
@@ -8,6 +9,7 @@ variable "credentials" {
 
 variable "project" {
   description = "<insert project description>"
+  #Update the project id below to your project id. Must be changed!
   default     = "<insert project id here>"
 }
 

@@ -303,7 +303,14 @@ To switch back to the full dataset, delete the variable `ingest_limit` and `uplo
 
 ### 11. Verify the pipeline completed successfully
  
-Check that both tasks show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in all three destinations: pgAdmin (local), GCS (data lake), and BigQuery (data warehouse).
+The project uses two Airflow DAGs that run sequentially:
+ 
+| DAG | Schedule | Description |
+|-----|----------|-------------|
+| `us_accidents_pipeline` | 03:00 UTC | Ingests CSV → Postgres, exports to GCS |
+| `us_accidents_bq_pipeline` | 06:00 UTC | Loads GCS exports → BigQuery |
+ 
+Check that all tasks in both DAGs show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in all three destinations described below.
  
 #### 11.1 Open pgAdmin
 * pgAdmin: http://localhost:8085
@@ -327,25 +334,34 @@ Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
  
 #### 11.4 Verify data in GCS (Data Lake)
  
+The `upload_to_gcs` task exports the `accidents` table as a timestamped CSV into the `exports/` folder of your bucket. The file follows the naming pattern `accidents_<YYYYMMDD_HHMMSS>.csv`.
+ 
 1. Open https://console.cloud.google.com → **Cloud Storage → Buckets**
 2. Navigate to your bucket (e.g. `us_accidents_data_lake_bucket20260305`).
-3. Confirm that the expected output files (us_accidents_data_lake_bucket<your bucket name>/exports/accidents_20260523_083748.csv) are present and have a non-zero file size.
+3. Open the `exports/` folder and confirm a file named `accidents_<timestamp>.csv` is present with a non-zero file size.
 Alternatively, verify via the `gcloud` CLI:
 ```bash
-gcloud storage ls gs://us_accidents_data_lake_bucket20260305/
+gcloud storage ls gs://us_accidents_data_lake_bucket20260305/exports/
 ```
  
 #### 11.5 Verify data in BigQuery (Data Warehouse)
  
+The `load_to_bigquery` task creates four tables in the `us_accidents_dataset` dataset:
+ 
+| Table | Description |
+|-------|-------------|
+| `external_accidents_raw` | External table pointing directly to the GCS CSV(s) |
+| `accidents_cleaned` | Native table with correct data types |
+| `accidents_partitioned` | Partitioned by `DATE(start_time)` |
+| `accidents_partitioned_clustered` | Partitioned by `DATE(start_time)`, clustered by `state`, `severity`, `city` |
+ 
 1. Open https://console.cloud.google.com → **BigQuery**
 2. In the Explorer panel, expand your project and navigate to the dataset `us_accidents_dataset`.
-3. Open the `accidents` table and click **Preview** to confirm rows are present.
+3. Confirm all four tables listed above are present.
+4. Open `accidents_partitioned_clustered` and click **Preview** to confirm rows are present.
 Alternatively, run a quick row count query in the BigQuery editor:
 ```sql
 SELECT COUNT(*) AS row_count
-FROM `your_project_id.us_accidents_dataset.accidents`;
+FROM `your_project_id.us_accidents_dataset.accidents_partitioned_clustered`;
 ```
- 
-Replace `your_project_id` with your actual GCP project ID. A successful pipeline run will return a row count greater than zero.
-
-Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
+ Replace `your_project_id` with your actual GCP project ID. A successful pipeline run will return a row count greater than zero.
