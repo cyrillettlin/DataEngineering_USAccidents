@@ -329,7 +329,7 @@ Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
  
 1. Open https://console.cloud.google.com → **Cloud Storage → Buckets**
 2. Navigate to your bucket (e.g. `us_accidents_data_lake_bucket20260305`).
-3. Confirm that the expected output files (e.g. `us_accidents_raw.csv` and/or `us_accidents_transformed.csv`) are present and have a non-zero file size.
+3. Confirm that the expected output files (us_accidents_data_lake_bucket<your bucket name>/exports/accidents_20260523_083748.csv) are present and have a non-zero file size.
 Alternatively, verify via the `gcloud` CLI:
 ```bash
 gcloud storage ls gs://us_accidents_data_lake_bucket20260305/
