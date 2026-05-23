@@ -101,11 +101,129 @@ Expand-Archive -Path data\us-accidents.zip -DestinationPath data
 
 ---
 
-### 4. Configure the environment
+### 4. Google Cloud Setup — Create a Service Account JSON Key
 
-Run the setup script once. It detects your OS and writes a `.env` file with the correct Docker socket permissions and Postgres hostname for your platform.
+The DAGs upload data to GCS and BigQuery, so GCP infrastructure must be provisioned **before** starting the containers.
 
-**Linux / WSL / macOS / Windows PowerShell:**
+1. Open https://console.cloud.google.com → **IAM & Admin → Service Accounts**
+2. Click **Create Service Account**, enter a name, assign roles (`Storage Admin` + `BigQuery Admin`), click **Done**.
+3. Open the account → **Keys** tab → **Add Key → Create new key → JSON**.
+4. The key file downloads automatically.
+
+> ⚠️ **Never commit the JSON key to Git.** Store it outside the repository.
+
+---
+
+### 5. Install Terraform
+
+Terraform ≥ 1.0 is required. Choose the method for your platform:
+
+**Linux (Ubuntu / Debian / WSL):**
+```bash
+sudo apt-get update && sudo apt-get install -y gnupg software-properties-common
+wget -O- https://apt.releases.hashicorp.com/gpg | \
+  gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+  https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+  sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt-get update && sudo apt-get install -y terraform
+```
+
+**macOS (Homebrew):**
+```bash
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
+```
+
+**Windows PowerShell (Chocolatey):**
+```powershell
+choco install terraform
+```
+> If you don't have Chocolatey: https://chocolatey.org/install — or download the binary directly from https://developer.hashicorp.com/terraform/install and add it to your `PATH`.
+
+Verify the installation on all platforms:
+```bash
+terraform -version
+```
+
+---
+
+### 6. Provision Infrastructure with Terraform
+
+Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data warehouse).
+
+#### Provisioned resources
+
+| Resource | Default name | Location |
+|----------|-------------|----------|
+| GCS Bucket | `us_accidents_data_lake_bucket20260305` | `EU` |
+| BigQuery Dataset | `us_accidents_dataset` | `EU` |
+
+#### Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `credentials` | *(path to JSON key)* | Service account key file |
+| `project` | *(your project ID)* | GCP project ID |
+| `region` | `europe-west6` | Provider region |
+| `location` | `EU` | Resource location |
+| `bq_dataset_name` | `us_accidents_dataset` | BigQuery dataset name |
+| `gcs_bucket_name` | `us_accidents_data_lake_bucket20260305` | GCS bucket name (must be globally unique, must be changed) |
+| `gcs_storage_class` | `STANDARD` | Bucket storage class |
+
+#### Steps
+
+**1. Navigate to the Terraform directory:**
+```bash
+# Linux / WSL / macOS
+cd ../Terraform
+
+# Windows PowerShell
+cd ..\Terraform
+```
+
+**2. Set your credentials and project ID:**
+Edit the `credentials` and `project` defaults directly in `variables.tf`.
+
+**3. Initialise provider plugins:**
+```bash
+terraform init
+```
+
+**4. Preview planned changes:**
+```bash
+terraform plan
+```
+
+**5. Apply the configuration:**
+```bash
+terraform apply
+```
+Type `yes` when prompted. Terraform will create the GCS bucket and BigQuery dataset.
+
+**6. Dont forget to tear down the project, when you are done! (avoids ongoing costs):**
+```bash
+terraform destroy
+```
+Type `yes` when prompted. The bucket will be force-deleted even if it still contains objects.
+
+> **Note:** `gcs_bucket_name` must be globally unique across all GCP projects. Update the default value in `variables.tf` if the name is already taken.
+
+---
+
+### 7. Configure the environment
+
+Now that `variables.tf` is configured, run the setup script once. It detects your OS, writes a `.env` file with the correct Docker socket permissions and Postgres hostname for your platform, and reads the GCP credentials, project, dataset, and bucket values directly from `variables.tf`.
+
+Navigate back to the Docker directory first:
+```bash
+cd ../Docker\ Environment   # Linux / WSL / macOS
+```
+```powershell
+cd "..\Docker Environment"  # Windows PowerShell
+```
+
+Then run:
 ```bash
 bash setup_env.sh
 ```
@@ -122,16 +240,16 @@ bash setup_env.sh
 
 ---
 
-### 5. Load data and scripts into the Docker volume
+### 8. Load data and scripts into the Docker volume
 
-This one-time setup step copies the CSV and pipeline scripts into the shared Docker volume:
+Run this one-time setup step to copy the CSV and pipeline scripts into the shared Docker volume:
 ```
 docker compose --profile setup up -d
 ```
 
 ---
 
-### 6. Start the containers
+### 9. Start the containers
 
 ```
 docker compose up -d
@@ -141,16 +259,16 @@ The first startup takes a few minutes. Airflow initialises its database and crea
 
 ---
 
-### 7. Workflow Orchestration (Airflow)
+### 10. Workflow Orchestration (Airflow)
 
 The pipeline is orchestrated using Apache Airflow. The DAG `us_accidents_pipeline` runs the ingestion and transformation steps sequentially and is scheduled to execute daily at 03:00 UTC.
 
-#### 7.1 Open the Airflow UI
+#### 10.1 Open the Airflow UI
 * Airflow: http://localhost:8080
   * User: `admin`
   * PW: `admin`
 
-#### 7.2 Trigger a run
+#### 10.2 Trigger a run
 
 **Option A — Manual run via UI:**
 1. Navigate to **DAGs** and find `us_accidents_pipeline`.
@@ -168,14 +286,10 @@ docker compose exec airflow_scheduler \
   --end-date 2024-01-31
 ```
 
-#### 7.3 Run with a reduced row limit (for testing)
+#### 10.3 Run with a reduced row limit (for testing)
 The full dataset contains ~7 million rows and takes several minutes to ingest. For a quick smoke test, limit the number of rows via an Airflow Variable — no code changes required.
 
-```
-docker compose exec airflow_scheduler airflow variables set ingest_limit 1000
-```
-
-**Or via the Airflow UI:** Admin → Variables → Add → Key: `ingest_limit`, Value: `1000`
+**Via the Airflow UI:** Admin → Variables → Add → Key: `ingest_limit` and `upload_limit` , Value: `50000`
 
 | Value | Rows | Approximate duration |
 |-------|------|----------------------|
@@ -183,23 +297,20 @@ docker compose exec airflow_scheduler airflow variables set ingest_limit 1000
 | `100000` | 100k | ~1 minute |
 | *(not set)* | all ~7M | production mode |
 
-To switch back to the full dataset, delete the variable:
-```
-docker compose exec airflow_scheduler airflow variables delete ingest_limit
-```
+To switch back to the full dataset, delete the variable `ingest_limit` and `upload_limit` in airflow.
 
 ---
 
-### 8. Verify the pipeline completed successfully
+### 11. Verify the pipeline completed successfully
 
 Check that both tasks show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in pgAdmin.
 
-#### 8.1 Open pgAdmin
+#### 11.1 Open pgAdmin
 * pgAdmin: http://localhost:8085
   * User: `admin@admin.com`
   * PW: `root`
 
-#### 8.2 Add New Server
+#### 11.2 Add New Server
 * **General**
   * Name: `us_accidents`
 * **Connection**
@@ -209,7 +320,7 @@ Check that both tasks show a **dark green** (success) status in the Airflow UI. 
   * Username: `root`
   * Password: `root`
 
-#### 8.3 Data location
+#### 11.3 Data location
 You can now find the data in the **us_accidents** database:
 ```
 Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
