@@ -108,9 +108,9 @@ The DAGs upload data to GCS and BigQuery, so GCP infrastructure must be provisio
 1. Open https://console.cloud.google.com → **IAM & Admin → Service Accounts**
 2. Click **Create Service Account**, enter a name, assign roles (`Storage Admin` + `BigQuery Admin`), click **Done**.
 3. Open the account → **Keys** tab → **Add Key → Create new key → JSON**.
-4. The key file downloads automatically. **Rename it to `service_account.json`** and place it inside the `Terraform/` directory.
+> <span style="color:red;"><strong>Important:</strong></span> The key file downloads automatically. Rename it to **`service_account.json`** and place it inside the **`Terraform/`** directory.
 
-> ⚠️ **Never commit the JSON key to Git.** The `Terraform/` directory is listed in `.gitignore` for this reason — double-check before pushing.
+Never commit the JSON key to Git.** The `Terraform/` directory is listed in `.gitignore` for this reason — double-check before pushing.
 
 ---
 
