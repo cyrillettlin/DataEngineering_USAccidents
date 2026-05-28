@@ -1,8 +1,6 @@
 name: dockerenvironment
 
 volumes:
-  us_accidents_postgres_data:
-    driver: local
   airflow_postgres_data:
     driver: local
   airflow_logs:
@@ -27,7 +25,6 @@ x-airflow-env: &airflow-env
   DOCKER_HOST: unix:///var/run/docker.sock
 
 # ── Shared Airflow volumes ────────────────────────────────────────────────────
-# Extracted so webserver, scheduler and init all mount exactly the same set.
 x-airflow-volumes: &airflow-volumes
   - ./dags:/opt/airflow/dags
   - airflow_logs:/opt/airflow/logs
@@ -50,16 +47,12 @@ services:
   script_loader:
     image: alpine:3
     volumes:
-      - ./ingest.py:/src/ingest.py:ro
-      - ./transform.py:/src/transform.py:ro
       - ./upload_to_gcs.py:/src/upload_to_gcs.py:ro
       - ./load_to_bigquery.py:/src/load_to_bigquery.py:ro
       - ./requirements.txt:/src/requirements.txt:ro
       - accidents_data:/data
     command: >
-      sh -c "cp /src/ingest.py /data/ingest.py &&
-             cp /src/upload_to_gcs.py /data/upload_to_gcs.py &&
-             cp /src/transform.py /data/transform.py &&
+      sh -c "cp /src/upload_to_gcs.py /data/upload_to_gcs.py &&
              cp /src/load_to_bigquery.py /data/load_to_bigquery.py &&
              cp /src/requirements.txt /data/requirements.txt &&
              echo 'Scripts loaded.'"
@@ -74,38 +67,6 @@ services:
     command: sh -c "cp /src/service_account.json /data/service_account.json && echo 'Credentials loaded.'"
     profiles:
       - setup
-
-  # ── Application database ──────────────────────────────────────────────────
-  pgdatabase:
-    image: postgres:18
-    environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: root
-      POSTGRES_DB: us_accidents
-    ports:
-      - "5432:5432"
-    volumes:
-      - us_accidents_postgres_data:/var/lib/postgresql
-    networks:
-      - accidents_net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d us_accidents"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  pgadmin:
-    image: dpage/pgadmin4
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: root
-    ports:
-      - "8085:80"
-    networks:
-      - accidents_net
-    depends_on:
-      pgdatabase:
-        condition: service_healthy
 
   # ── Airflow metadata database ─────────────────────────────────────────────
   airflow_postgres:
@@ -148,7 +109,6 @@ services:
       airflow variables set bq_skip_upstream_sensor false &&
       airflow variables set gcp_credentials_path /data/service_account.json &&
       airflow variables set gcs_bucket $$GCS_BUCKET &&
-      airflow variables set ingest_limit 50000 &&
       airflow variables set upload_limit 50000
       "
     networks:
@@ -173,8 +133,6 @@ services:
     depends_on:
       airflow_init:
         condition: service_completed_successfully
-      pgdatabase:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
@@ -195,5 +153,3 @@ services:
     depends_on:
       airflow_init:
         condition: service_completed_successfully
-      pgdatabase:
-        condition: service_healthy

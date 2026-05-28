@@ -1,174 +1,95 @@
+"""
+Upload US Accidents CSV directly to Google Cloud Storage.
+
+Uploads the raw CSV file as-is (full file) or a row-limited subset for testing.
+BigQuery reads the file via an external table with an explicit schema, so the
+original CSV headers with special characters are skipped and columns are mapped
+positionally — no header renaming is needed here.
+"""
+
 import argparse
+import csv
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 
-import psycopg2
 from google.cloud import storage
 
-
-
-DB_CONFIG = {
-    "host": os.getenv("PGHOST", "pgdatabase"),
-    "port": int(os.getenv("PGPORT", 5432)),
-    "dbname": os.getenv("PGDATABASE", "us_accidents"),
-    "user": os.getenv("PGUSER", "root"),
-    "password": os.getenv("PGPASSWORD", "root"),
-}
-
 DEFAULT_BUCKET_NAME = os.getenv("GCS_BUCKET", "your-bucket-name")
-DEFAULT_TABLE_NAME = os.getenv("EXPORT_TABLE", "accidents")
-DEFAULT_EXPORT_DIR = "/tmp"
-DEFAULT_CHUNK_SIZE = 1024 * 1024 * 8  # 8 MB
+CHUNK_SIZE = 8 * 1024 * 1024  # 8 MB resumable upload chunks
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Export a PostgreSQL table to CSV and upload it to a Google Cloud Storage bucket."
+        description="Upload US Accidents CSV to a GCS bucket."
     )
+    parser.add_argument("--csv-file", required=True, help="Path to the source CSV file")
     parser.add_argument(
         "--bucket",
         default=DEFAULT_BUCKET_NAME,
-        help=f"Target Google Cloud Storage bucket name, without gs://. Default: {DEFAULT_BUCKET_NAME}",
+        help=f"GCS bucket name (default: {DEFAULT_BUCKET_NAME})",
     )
     parser.add_argument(
-        "--table",
-        default=DEFAULT_TABLE_NAME,
-        help=f"Postgres table to export. Default: {DEFAULT_TABLE_NAME}",
+        "--object-name",
+        default=None,
+        help="Target object path in the bucket (default: exports/us_accidents_<timestamp>.csv)",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="Maximum number of rows to export. Default: export all rows.",
-    )
-    parser.add_argument(
-        "--object-name",
-        default=None,
-        help="Target object name in the bucket. Default: exports/<table>_<timestamp>.csv",
-    )
-    parser.add_argument(
-        "--export-dir",
-        default=DEFAULT_EXPORT_DIR,
-        help=f"Local directory for the temporary CSV export. Default: {DEFAULT_EXPORT_DIR}",
-    )
-    parser.add_argument(
-        "--keep-local-file",
-        action="store_true",
-        help="Keep the exported CSV locally after upload.",
+        help="Upload only the first N data rows — useful for testing",
     )
     return parser.parse_args()
 
 
-def get_connection(retries=20, delay=3):
-    for attempt in range(1, retries + 1):
-        try:
-            conn = psycopg2.connect(**DB_CONFIG)
-            print(f"[gcs-upload] Connected to Postgres at {DB_CONFIG['host']}.")
-            return conn
-        except Exception as e:
-            print(f"[gcs-upload] Postgres not ready yet ({attempt}/{retries}): {e}")
-            time.sleep(delay)
-
-    raise RuntimeError("Could not connect to Postgres after all retries.")
-
-
-def validate_table_name(table_name):
-    if not table_name.replace("_", "").isalnum():
-        raise ValueError("Invalid table name. Use only letters, numbers and underscores.")
-
-
-def ensure_table_has_rows(conn, table_name):
-    validate_table_name(table_name)
-
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = %s);",
-            (table_name,),
-        )
-
-        if not cur.fetchone()[0]:
-            raise RuntimeError(f"Table '{table_name}' does not exist.")
-
-        cur.execute(f"SELECT COUNT(*) FROM {table_name};")
-        row_count = cur.fetchone()[0]
-
-        if row_count == 0:
-            raise RuntimeError(f"Table '{table_name}' is empty. Nothing to export.")
-
-    print(f"[gcs-upload] Table '{table_name}' is ready with {row_count:,} rows.")
-
-
-def export_table_to_csv(conn, table_name, export_dir, limit=None):
-    validate_table_name(table_name)
-
-    if limit is not None and limit <= 0:
-        raise ValueError("--limit must be greater than 0.")
-
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    export_path = Path(export_dir) / f"{table_name}_{timestamp}.csv"
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if limit is None:
-        copy_sql = f"COPY {table_name} TO STDOUT WITH CSV HEADER"
-        print(f"[gcs-upload] Exporting all rows from '{table_name}' to '{export_path}'...")
-    else:
-        copy_sql = f"COPY (SELECT * FROM {table_name} LIMIT {limit}) TO STDOUT WITH CSV HEADER"
-        print(f"[gcs-upload] Exporting {limit:,} rows from '{table_name}' to '{export_path}'...")
-
-    with conn.cursor() as cur, open(export_path, "w", encoding="utf-8", newline="") as f:
-        cur.copy_expert(copy_sql, f)
-
-    size_mb = export_path.stat().st_size / (1024 * 1024)
-    print(f"[gcs-upload] Export complete: {size_mb:.2f} MB")
-
-    return export_path
-
-
-def upload_file_to_bucket(local_path, bucket_name, object_name):
-    print(f"[gcs-upload] Uploading to gs://{bucket_name}/{object_name}...")
-
+def upload_csv(csv_path: Path, bucket_name: str, object_name: str, limit=None):
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(object_name)
+    blob.chunk_size = CHUNK_SIZE
 
-    blob.chunk_size = DEFAULT_CHUNK_SIZE
-    blob.upload_from_filename(str(local_path), content_type="text/csv")
-
-    print(f"[gcs-upload] Upload complete: gs://{bucket_name}/{object_name}")
+    if limit is None:
+        # Stream the file directly to GCS — no memory overhead regardless of size
+        print(f"[gcs-upload] Uploading '{csv_path}' → gs://{bucket_name}/{object_name}...")
+        blob.upload_from_filename(str(csv_path), content_type="text/csv")
+        size_mb = csv_path.stat().st_size / (1024 * 1024)
+        print(f"[gcs-upload] Done. {size_mb:.1f} MB uploaded.")
+    else:
+        # Write a row-limited subset to /tmp, upload it, then clean up
+        tmp_path = Path(f"/tmp/_upload_{datetime.utcnow():%Y%m%d_%H%M%S}.csv")
+        print(f"[gcs-upload] Writing {limit:,}-row subset to '{tmp_path}'...")
+        with open(csv_path, "r", encoding="utf-8") as f_in, \
+             open(tmp_path, "w", encoding="utf-8", newline="") as f_out:
+            reader = csv.reader(f_in)
+            writer = csv.writer(f_out)
+            writer.writerow(next(reader))  # preserve original header
+            for i, row in enumerate(reader):
+                if i >= limit:
+                    break
+                writer.writerow(row)
+        print(f"[gcs-upload] Uploading subset → gs://{bucket_name}/{object_name}...")
+        blob.upload_from_filename(str(tmp_path), content_type="text/csv")
+        tmp_path.unlink()
+        print(f"[gcs-upload] Done. {limit:,} rows uploaded.")
 
 
 def main():
     args = parse_args()
+    csv_path = Path(args.csv_file)
+
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    object_name = args.object_name or f"exports/{args.table}_{timestamp}.csv"
+    object_name = args.object_name or f"exports/us_accidents_{timestamp}.csv"
 
-    conn = get_connection()
-    local_path = None
-
-    try:
-        ensure_table_has_rows(conn, args.table)
-        local_path = export_table_to_csv(
-            conn=conn,
-            table_name=args.table,
-            export_dir=args.export_dir,
-            limit=args.limit,
-        )
-        upload_file_to_bucket(
-            local_path=local_path,
-            bucket_name=args.bucket,
-            object_name=object_name,
-        )
-
-    finally:
-        conn.close()
-        print("[gcs-upload] Postgres connection closed.")
-
-        if local_path and local_path.exists() and not args.keep_local_file:
-            local_path.unlink()
-            print(f"[gcs-upload] Deleted local temp file: {local_path}")
+    upload_csv(
+        csv_path=csv_path,
+        bucket_name=args.bucket,
+        object_name=object_name,
+        limit=args.limit,
+    )
 
 
 if __name__ == "__main__":
