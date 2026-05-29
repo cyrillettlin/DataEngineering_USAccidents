@@ -14,9 +14,12 @@ provider "google" {
   region      = var.region
 }
 
+locals {
+  gcs_bucket_name = "us-accidents-data-lake-${var.project}"
+}
 
 resource "google_storage_bucket" "data-lake-bucket" {
-  name          = var.gcs_bucket_name
+  name          = local.gcs_bucket_name
   location      = var.location
   force_destroy = true
 
@@ -43,5 +46,5 @@ resource "google_bigquery_dataset" "demo_dataset" {
 }
 
 output "gcs_bucket_name" {
-  value = var.gcs_bucket_name
+  value = local.gcs_bucket_name
 }

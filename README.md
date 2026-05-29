@@ -155,7 +155,7 @@ Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data 
 
 | Resource | Default name | Location |
 |----------|-------------|----------|
-| GCS Bucket | `us_accidents_data_lake_bucket20260305` | `EU` |
+| GCS Bucket | `us-accidents-data-lake-<project-id>` | `EU` |
 | BigQuery Dataset | `us_accidents_dataset` | `EU` |
 
 #### Variables
@@ -167,7 +167,6 @@ Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data 
 | `region` | `europe-west6` | Provider region |
 | `location` | `EU` | Resource location |
 | `bq_dataset_name` | `us_accidents_dataset` | BigQuery dataset name |
-| `gcs_bucket_name` | `us_accidents_data_lake_bucket20260305` | GCS bucket name (must be globally unique, must be changed) |
 | `gcs_storage_class` | `STANDARD` | Bucket storage class |
 
 #### Steps
@@ -184,8 +183,8 @@ cd ../Terraform
 cd ..\Terraform
 ```
 
-**2. Set your project ID and bucket name:**
-The `credentials` default is already set to `./service_account.json` — this matches the file you placed in the `Terraform/` directory in step 4. Update `project` to your GCP project ID and `gcs_bucket_name` to a globally unique name in `variables.tf`.
+**2. Set your project ID:**
+The `credentials` default is already set to `./service_account.json` — this matches the file you placed in the `Terraform/` directory in step 4. Update `project` to your GCP project ID in `variables.tf`. The bucket name is derived automatically as `us-accidents-data-lake-<project-id>`.
 
 **3. Initialise provider plugins:**
 ```bash
@@ -209,7 +208,7 @@ terraform destroy
 ```
 Type `yes` when prompted. The bucket will be force-deleted even if it still contains objects.
 
-> **Note:** `gcs_bucket_name` must be globally unique across all GCP projects. Update the default value in `variables.tf` if the name is already taken.
+> **Note:** The bucket name is automatically derived from your GCP project ID (`us-accidents-data-lake-<project-id>`), which is globally unique by design.
 
 ---
 
@@ -338,14 +337,14 @@ Check that all tasks in both DAGs show a **dark green** (success) status in the 
 The `upload_to_gcs` task uploads the raw CSV as a timestamped file into the `exports/` folder of your bucket. The file follows the naming pattern `us_accidents_<YYYYMMDD_HHMMSS>.csv`.
 
 1. Open https://console.cloud.google.com → **Cloud Storage → Buckets**
-2. Navigate to your bucket (e.g. `us_accidents_data_lake_bucket20260305`).
+2. Navigate to your bucket (e.g. `us-accidents-data-lake-<project-id>`).
 3. Open the `exports/` folder and confirm a file named `us_accidents_<timestamp>.csv` is present with a non-zero file size.
 
 Alternatively, verify via the `gcloud` CLI:
 
 **Linux / WSL / macOS / Windows PowerShell:**
 ```bash
-gcloud storage ls gs://us_accidents_data_lake_bucket20260305/exports/
+gcloud storage ls gs://us-accidents-data-lake-<project-id>/exports/
 ```
 
 #### 11.2 Verify data in BigQuery (Data Warehouse)
