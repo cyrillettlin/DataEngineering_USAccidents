@@ -87,7 +87,7 @@ services:
 
   # ── Airflow init (runs once, then exits) ──────────────────────────────────
   airflow_init:
-    image: apache/airflow:2.9.3
+    image: apache/airflow:3.2.2
     environment:
       <<: *airflow-env
       BQ_PROJECT: ${BQ_PROJECT}
@@ -119,7 +119,7 @@ services:
 
   # ── Airflow webserver ─────────────────────────────────────────────────────
   airflow_webserver:
-    image: apache/airflow:2.9.3
+    image: apache/airflow:3.2.2
     environment:
       <<: *airflow-env
     volumes: *airflow-volumes
@@ -141,7 +141,7 @@ services:
 
   # ── Airflow scheduler ─────────────────────────────────────────────────────
   airflow_scheduler:
-    image: apache/airflow:2.9.3
+    image: apache/airflow:3.2.2
     environment:
       <<: *airflow-env
     volumes: *airflow-volumes
