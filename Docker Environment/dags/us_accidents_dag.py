@@ -54,7 +54,7 @@ with DAG(
         description="Batch pipeline: upload US Accidents CSV directly to GCS (transform runs in BigQuery).",
         default_args=default_args,
         start_date=datetime(2024, 1, 1),
-        schedule_interval="0 3 * * *",
+        schedule="0 3 * * *",
         catchup=False,
         max_active_runs=1,
         tags=["accidents", "batch", "gcs"],
