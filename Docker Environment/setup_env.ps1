@@ -44,7 +44,8 @@ else {
 # ── Extract Terraform defaults ─────────────────────
 $bqProject = Get-TfDefault "project"
 $bqDataset = Get-TfDefault "bq_dataset_name"
-$gcsBucket = Get-TfDefault "gcs_bucket_name"
+# Bucket name mirrors the Terraform local: us-accidents-data-lake-<project>
+$gcsBucket = "us-accidents-data-lake-$bqProject"
 Write-Host "[setup_env] Extracted variables from variables.tf"
 
 # ── Write .env ─────────────────────────────────────

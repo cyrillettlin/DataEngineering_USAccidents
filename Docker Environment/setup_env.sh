@@ -56,7 +56,8 @@ esac
 if [[ -f "$TF_VARS_FILE" ]]; then
   BQ_PROJECT="$(tf_default project)"
   BQ_DATASET="$(tf_default bq_dataset_name)"
-  GCS_BUCKET="$(tf_default gcs_bucket_name)"
+  # Bucket name mirrors the Terraform local: us-accidents-data-lake-<project>
+  GCS_BUCKET="us-accidents-data-lake-${BQ_PROJECT}"
   echo "[setup_env] Extracted Airflow variables from variables.tf"
 else
   echo "[setup_env] WARNING: variables.tf not found at ${TF_VARS_FILE} — Airflow variables will be empty."
