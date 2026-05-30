@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # setup_env.sh
 # Detects the current platform and writes a .env file with the correct
-# values for DOCKER_GID and PGHOST.
-#
+# value for DOCKER_GID.
 #
 # Run once before `docker compose up`:
 #   bash setup_env.sh
@@ -35,28 +34,21 @@ case "$OS" in
     # The Airflow containers are added to this group so they can access
     # /var/run/docker.sock without running as root.
     DOCKER_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo 0)"
-    # On Linux the DockerOperator containers join accidents_net, so they
-    # can reach pgdatabase by its service name directly.
-    PGHOST="pgdatabase"
-    echo "[setup_env] Platform: Linux/WSL  |  DOCKER_GID=${DOCKER_GID}  |  PGHOST=${PGHOST}"
+    echo "[setup_env] Platform: Linux/WSL  |  DOCKER_GID=${DOCKER_GID}"
     ;;
   Darwin*)
     # macOS Docker Desktop — socket is a proxy, GID not needed.
     DOCKER_GID="0"
-    # host.docker.internal resolves to the Docker Desktop host on Mac.
-    PGHOST="host.docker.internal"
-    echo "[setup_env] Platform: macOS  |  DOCKER_GID=${DOCKER_GID}  |  PGHOST=${PGHOST}"
+    echo "[setup_env] Platform: macOS  |  DOCKER_GID=${DOCKER_GID}"
     ;;
   MINGW*|MSYS*|CYGWIN*)
     # Windows Git Bash / WSL1 fallback
     DOCKER_GID="0"
-    PGHOST="host.docker.internal"
-    echo "[setup_env] Platform: Windows  |  DOCKER_GID=${DOCKER_GID}  |  PGHOST=${PGHOST}"
+    echo "[setup_env] Platform: Windows  |  DOCKER_GID=${DOCKER_GID}"
     ;;
   *)
     echo "[setup_env] Unknown platform '$OS', using safe defaults."
     DOCKER_GID="0"
-    PGHOST="host.docker.internal"
     ;;
 esac
 
@@ -64,7 +56,8 @@ esac
 if [[ -f "$TF_VARS_FILE" ]]; then
   BQ_PROJECT="$(tf_default project)"
   BQ_DATASET="$(tf_default bq_dataset_name)"
-  GCS_BUCKET="$(tf_default gcs_bucket_name)"
+  # Bucket name mirrors the Terraform local: us-accidents-data-lake-<project>
+  GCS_BUCKET="us-accidents-data-lake-${BQ_PROJECT}"
   echo "[setup_env] Extracted Airflow variables from variables.tf"
 else
   echo "[setup_env] WARNING: variables.tf not found at ${TF_VARS_FILE} — Airflow variables will be empty."
@@ -119,11 +112,6 @@ cat > "$ENV_FILE" <<ENVEOF
 # Added to Airflow containers via group_add so DockerOperator can connect
 # to the socket on Linux/WSL without running as root.
 DOCKER_GID=${DOCKER_GID}
-
-# Postgres hostname used by DockerOperator task containers.
-# - Linux/WSL:    pgdatabase  (task containers join accidents_net)
-# - Windows/Mac:  host.docker.internal  (Docker Desktop proxy)
-PGHOST=${PGHOST}
 
 # Airflow variables sourced from Terraform/variables.tf.
 # GCP credentials are loaded into the Docker volume via the credentials_loader

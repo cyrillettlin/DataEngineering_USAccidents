@@ -23,8 +23,57 @@ log = logging.getLogger(__name__)
 # ── SQL templates ─────────────────────────────────────────────────────────────
 
 def sql_create_external_table(project, dataset, gcs_uri):
+    # Explicit schema so BigQuery ignores the original CSV headers (which contain
+    # special characters like "Distance(mi)") and maps columns positionally instead.
     return f"""
-    CREATE OR REPLACE EXTERNAL TABLE `{project}.{dataset}.external_accidents_raw`
+    CREATE OR REPLACE EXTERNAL TABLE `{project}.{dataset}.external_accidents_raw` (
+      id                    STRING,
+      source                STRING,
+      severity              STRING,
+      start_time            STRING,
+      end_time              STRING,
+      start_lat             STRING,
+      start_lng             STRING,
+      end_lat               STRING,
+      end_lng               STRING,
+      distance_mi           STRING,
+      description           STRING,
+      street                STRING,
+      city                  STRING,
+      county                STRING,
+      state                 STRING,
+      zipcode               STRING,
+      country               STRING,
+      timezone              STRING,
+      airport_code          STRING,
+      weather_timestamp     STRING,
+      temperature_f         STRING,
+      wind_chill_f          STRING,
+      humidity_pct          STRING,
+      pressure_in           STRING,
+      visibility_mi         STRING,
+      wind_direction        STRING,
+      wind_speed_mph        STRING,
+      precipitation_in      STRING,
+      weather_condition     STRING,
+      amenity               STRING,
+      bump                  STRING,
+      crossing              STRING,
+      give_way              STRING,
+      junction              STRING,
+      no_exit               STRING,
+      railway               STRING,
+      roundabout            STRING,
+      station               STRING,
+      stop                  STRING,
+      traffic_calming       STRING,
+      traffic_signal        STRING,
+      turning_loop          STRING,
+      sunrise_sunset        STRING,
+      civil_twilight        STRING,
+      nautical_twilight     STRING,
+      astronomical_twilight STRING
+    )
     OPTIONS (
       format = 'CSV',
       uris = ['{gcs_uri}'],
@@ -40,71 +89,93 @@ def sql_create_external_table(project, dataset, gcs_uri):
 def sql_create_cleaned_table(project, dataset):
     return f"""
     CREATE OR REPLACE TABLE `{project}.{dataset}.accidents_cleaned` AS
+    WITH base AS (
+      SELECT
+        id,
+        source,
+        SAFE_CAST(severity          AS INT64)   AS severity,
+        SAFE_CAST(start_time        AS DATETIME) AS start_time,
+        SAFE_CAST(end_time          AS DATETIME) AS end_time,
+        SAFE_CAST(weather_timestamp AS DATETIME) AS weather_timestamp,
+        SAFE_CAST(start_lat         AS FLOAT64)  AS start_lat,
+        SAFE_CAST(start_lng         AS FLOAT64)  AS start_lng,
+        SAFE_CAST(end_lat           AS FLOAT64)  AS end_lat,
+        SAFE_CAST(end_lng           AS FLOAT64)  AS end_lng,
+        SAFE_CAST(distance_mi       AS FLOAT64)  AS distance_mi,
+        SAFE_CAST(visibility_mi     AS FLOAT64)  AS visibility_mi,
+        description, street, city, county, state, zipcode, country, timezone, airport_code,
+        SAFE_CAST(temperature_f     AS FLOAT64)  AS temperature_f,
+        SAFE_CAST(wind_chill_f      AS FLOAT64)  AS wind_chill_f,
+        SAFE_CAST(humidity_pct      AS FLOAT64)  AS humidity_pct,
+        SAFE_CAST(pressure_in       AS FLOAT64)  AS pressure_in,
+        wind_direction,
+        SAFE_CAST(wind_speed_mph    AS FLOAT64)  AS wind_speed_mph,
+        SAFE_CAST(precipitation_in  AS FLOAT64)  AS precipitation_in,
+        weather_condition,
+        SAFE_CAST(amenity           AS BOOL)     AS amenity,
+        SAFE_CAST(bump              AS BOOL)     AS bump,
+        SAFE_CAST(crossing          AS BOOL)     AS crossing,
+        SAFE_CAST(give_way          AS BOOL)     AS give_way,
+        SAFE_CAST(junction          AS BOOL)     AS junction,
+        SAFE_CAST(no_exit           AS BOOL)     AS no_exit,
+        SAFE_CAST(railway           AS BOOL)     AS railway,
+        SAFE_CAST(roundabout        AS BOOL)     AS roundabout,
+        SAFE_CAST(station           AS BOOL)     AS station,
+        SAFE_CAST(stop              AS BOOL)     AS stop,
+        SAFE_CAST(traffic_calming   AS BOOL)     AS traffic_calming,
+        SAFE_CAST(traffic_signal    AS BOOL)     AS traffic_signal,
+        SAFE_CAST(turning_loop      AS BOOL)     AS turning_loop,
+        sunrise_sunset, civil_twilight, nautical_twilight, astronomical_twilight
+      FROM `{project}.{dataset}.external_accidents_raw`
+    )
     SELECT
-      id AS accident_id,
+      id                                          AS accident_id,
       source,
-      SAFE_CAST(severity AS INT64) AS severity,
+      severity,
 
-      SAFE_CAST(start_time AS DATETIME) AS start_time,
-      SAFE_CAST(start_year AS INT64) AS start_year,
-      SAFE_CAST(start_month AS INT64) AS start_month,
-      SAFE_CAST(start_day AS INT64) AS start_day,
-      SAFE_CAST(start_hour AS INT64) AS start_hour,
-      SAFE_CAST(start_minute AS INT64) AS start_minute,
+      start_time,
+      EXTRACT(YEAR   FROM start_time)             AS start_year,
+      EXTRACT(MONTH  FROM start_time)             AS start_month,
+      EXTRACT(DAY    FROM start_time)             AS start_day,
+      EXTRACT(HOUR   FROM start_time)             AS start_hour,
+      EXTRACT(MINUTE FROM start_time)             AS start_minute,
 
-      SAFE_CAST(end_time AS DATETIME) AS end_time,
-      SAFE_CAST(end_year AS INT64) AS end_year,
-      SAFE_CAST(end_month AS INT64) AS end_month,
-      SAFE_CAST(end_day AS INT64) AS end_day,
-      SAFE_CAST(end_hour AS INT64) AS end_hour,
-      SAFE_CAST(end_minute AS INT64) AS end_minute,
+      end_time,
+      EXTRACT(YEAR   FROM end_time)               AS end_year,
+      EXTRACT(MONTH  FROM end_time)               AS end_month,
+      EXTRACT(DAY    FROM end_time)               AS end_day,
+      EXTRACT(HOUR   FROM end_time)               AS end_hour,
+      EXTRACT(MINUTE FROM end_time)               AS end_minute,
 
-      SAFE_CAST(weather_timestamp AS DATETIME) AS weather_timestamp,
-      SAFE_CAST(weather_year AS INT64) AS weather_year,
-      SAFE_CAST(weather_month AS INT64) AS weather_month,
-      SAFE_CAST(weather_day AS INT64) AS weather_day,
-      SAFE_CAST(weather_hour AS INT64) AS weather_hour,
-      SAFE_CAST(weather_minute AS INT64) AS weather_minute,
+      weather_timestamp,
+      EXTRACT(YEAR   FROM weather_timestamp)      AS weather_year,
+      EXTRACT(MONTH  FROM weather_timestamp)      AS weather_month,
+      EXTRACT(DAY    FROM weather_timestamp)      AS weather_day,
+      EXTRACT(HOUR   FROM weather_timestamp)      AS weather_hour,
+      EXTRACT(MINUTE FROM weather_timestamp)      AS weather_minute,
 
-      SAFE_CAST(start_lat AS FLOAT64) AS start_lat,
-      SAFE_CAST(start_lng AS FLOAT64) AS start_lng,
-      SAFE_CAST(end_lat AS FLOAT64) AS end_lat,
-      SAFE_CAST(end_lng AS FLOAT64) AS end_lng,
+      start_lat, start_lng, end_lat, end_lng,
 
-      SAFE_CAST(distance_km AS FLOAT64) AS distance_km,
-      SAFE_CAST(visibility_km AS FLOAT64) AS visibility_km,
+      ROUND(distance_mi   * 1.60934, 3)           AS distance_km,
+      ROUND(visibility_mi * 1.60934, 3)           AS visibility_km,
 
-      description, street, city, county, state, zipcode,
-      country, timezone, airport_code,
+      description, street, city, county, state, zipcode, country, timezone, airport_code,
 
-      SAFE_CAST(temperature_c AS FLOAT64) AS temperature_c,
-      SAFE_CAST(wind_chill_c AS FLOAT64) AS wind_chill_c,
-      SAFE_CAST(humidity_pct AS FLOAT64) AS humidity_pct,
-      SAFE_CAST(pressure_in AS FLOAT64) AS pressure_in,
-
+      ROUND((temperature_f - 32) * 5.0 / 9.0, 2) AS temperature_c,
+      ROUND((wind_chill_f  - 32) * 5.0 / 9.0, 2) AS wind_chill_c,
+      humidity_pct,
+      pressure_in,
       wind_direction,
-      SAFE_CAST(wind_speed_mph AS FLOAT64) AS wind_speed_mph,
-      SAFE_CAST(precipitation_in AS FLOAT64) AS precipitation_in,
-
+      wind_speed_mph,
+      precipitation_in,
       weather_condition,
 
-      amenity,
-      bump,
-      crossing,
-      give_way,
-      junction,
-      no_exit,
-      railway,
-      roundabout,
-      station,
-      stop,
-      traffic_calming,
-      traffic_signal,
-      turning_loop,
+      amenity, bump, crossing, give_way, junction, no_exit,
+      railway, roundabout, station, stop, traffic_calming, traffic_signal, turning_loop,
 
       sunrise_sunset, civil_twilight, nautical_twilight, astronomical_twilight
 
-    FROM `{project}.{dataset}.external_accidents_raw`
+    FROM base
     """
 
 

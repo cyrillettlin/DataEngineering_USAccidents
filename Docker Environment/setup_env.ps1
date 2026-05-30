@@ -1,5 +1,5 @@
 # setup_env.ps1
-# Windows equivalent of setup_env.sh (for credentials)
+# Windows equivalent of setup_env.sh
 $ErrorActionPreference = "Stop"
 
 $EnvFile = ".env"
@@ -30,24 +30,22 @@ function Get-TfDefault {
 $os = $env:OS
 if ($env:WSL_DISTRO_NAME) {
     $dockerGid = 0
-    $pgHost = "pgdatabase"
     Write-Host "[setup_env] WSL detected"
 }
 elseif ($os -match "Windows") {
     $dockerGid = 0
-    $pgHost = "host.docker.internal"
     Write-Host "[setup_env] Windows detected"
 }
 else {
     $dockerGid = 0
-    $pgHost = "host.docker.internal"
     Write-Host "[setup_env] Unknown OS"
 }
 
 # ── Extract Terraform defaults ─────────────────────
 $bqProject = Get-TfDefault "project"
 $bqDataset = Get-TfDefault "bq_dataset_name"
-$gcsBucket = Get-TfDefault "gcs_bucket_name"
+# Bucket name mirrors the Terraform local: us-accidents-data-lake-<project>
+$gcsBucket = "us-accidents-data-lake-$bqProject"
 Write-Host "[setup_env] Extracted variables from variables.tf"
 
 # ── Write .env ─────────────────────────────────────
@@ -59,11 +57,6 @@ Write-Host "[setup_env] Extracted variables from variables.tf"
 # Added to Airflow containers via group_add so DockerOperator can connect
 # to the socket on Linux/WSL without running as root.
 DOCKER_GID=$dockerGid
-
-# Postgres hostname used by DockerOperator task containers.
-# - Linux/WSL:    pgdatabase  (task containers join accidents_net)
-# - Windows/Mac:  host.docker.internal  (Docker Desktop proxy)
-PGHOST=$pgHost
 
 # Airflow variables sourced from Terraform/variables.tf.
 # GCP credentials are loaded into the Docker volume via the credentials_loader

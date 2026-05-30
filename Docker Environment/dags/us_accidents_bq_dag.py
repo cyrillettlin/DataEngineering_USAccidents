@@ -64,7 +64,7 @@ with DAG(
         description="Pipeline 2: load GCS accident exports → BigQuery (cleaned, partitioned, clustered).",
         default_args=default_args,
         start_date=datetime(2024, 1, 1),
-        schedule_interval="0 6 * * *",
+        schedule="0 6 * * *",
         catchup=False,
         max_active_runs=1,
         tags=["accidents", "batch", "bigquery"],

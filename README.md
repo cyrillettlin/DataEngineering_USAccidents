@@ -8,9 +8,6 @@
 * Airflow: http://localhost:8080
   * User: `admin`
   * PW: `admin`
-* pgAdmin: http://localhost:8085
-  * User: `admin@admin.com`
-  * PW: `root`
 
 ## Dataset
 ### Sample Data (Raw)
@@ -31,6 +28,8 @@ Peter, a senior data analyst at the Department of Motor Vehicles (DMV), is respo
 
 
 ## Transformation
+Transformations run directly in BigQuery as part of the `us_accidents_bq_pipeline` DAG. The raw CSV is uploaded to GCS as-is, and all conversion and enrichment happens in a single SQL step when the `accidents_cleaned` table is created.
+
 ### Format standardisation
 The transformation standardises measurement units to ensure consistency across the dataset. In the raw data, distance and visibility are stored in miles (`distance_mi`, `visibility_mi`). These values are converted into kilometres (`distance_km`, `visibility_km`) using the factor 1.60934 and rounded to three decimal places.
 Additionally, temperature and wind chill values are converted from Fahrenheit (`temperature_f`, `wind_chill_f`) to Celsius (`temperature_c`, `wind_chill_c`) using the standard formula.
@@ -156,7 +155,7 @@ Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data 
 
 | Resource | Default name | Location |
 |----------|-------------|----------|
-| GCS Bucket | `us_accidents_data_lake_bucket20260305` | `EU` |
+| GCS Bucket | `us-accidents-data-lake-<project-id>` | `EU` |
 | BigQuery Dataset | `us_accidents_dataset` | `EU` |
 
 #### Variables
@@ -168,7 +167,6 @@ Terraform creates a **GCS bucket** (data lake) and a **BigQuery dataset** (data 
 | `region` | `europe-west6` | Provider region |
 | `location` | `EU` | Resource location |
 | `bq_dataset_name` | `us_accidents_dataset` | BigQuery dataset name |
-| `gcs_bucket_name` | `us_accidents_data_lake_bucket20260305` | GCS bucket name (must be globally unique, must be changed) |
 | `gcs_storage_class` | `STANDARD` | Bucket storage class |
 
 #### Steps
@@ -185,8 +183,8 @@ cd ../Terraform
 cd ..\Terraform
 ```
 
-**2. Set your project ID and bucket name:**
-The `credentials` default is already set to `./service_account.json` — this matches the file you placed in the `Terraform/` directory in step 4. Update `project` to your GCP project ID and `gcs_bucket_name` to a globally unique name in `variables.tf`.
+**2. Set your project ID:**
+The `credentials` default is already set to `./service_account.json` — this matches the file you placed in the `Terraform/` directory in step 4. Update `project` to your GCP project ID in `variables.tf`. The bucket name is derived automatically as `us-accidents-data-lake-<project-id>`.
 
 **3. Initialise provider plugins:**
 ```bash
@@ -210,13 +208,13 @@ terraform destroy
 ```
 Type `yes` when prompted. The bucket will be force-deleted even if it still contains objects.
 
-> **Note:** `gcs_bucket_name` must be globally unique across all GCP projects. Update the default value in `variables.tf` if the name is already taken.
+> **Note:** The bucket name is automatically derived from your GCP project ID (`us-accidents-data-lake-<project-id>`), which is globally unique by design.
 
 ---
 
 ### 7. Configure the environment
 
-Now that `variables.tf` is configured, run the setup script once. It detects your OS, writes a `.env` file with the correct Docker socket permissions and Postgres hostname for your platform, and reads the GCP project, dataset, and bucket values directly from `variables.tf`.
+Now that `variables.tf` is configured, run the setup script once. It detects your OS, writes a `.env` file with the correct value for `DOCKER_GID`, and reads the GCP project, dataset, and bucket values directly from `variables.tf`.
 
 Navigate back to the Docker directory first:
 
@@ -229,7 +227,7 @@ cd ../Docker\ Environment
 cd "..\Docker Environment"  
 ```
 
-Then run (Linux, MacOS):
+Then run (Linux, macOS):
 ```bash
 bash setup_env.sh
 ```
@@ -244,10 +242,10 @@ bash setup_env.sh
 .\setup_env.ps1
 ```
 
-| Platform | DOCKER_GID | PGHOST |
-|---|---|---|
-| Linux / WSL | GID of `/var/run/docker.sock` | `pgdatabase` |
-| Windows / macOS | `0` (not needed) | `host.docker.internal` |
+| Platform | DOCKER_GID |
+|---|---|
+| Linux / WSL | GID of `/var/run/docker.sock` |
+| Windows / macOS | `0` (not needed) |
 
 ---
 
@@ -263,7 +261,7 @@ This runs three setup services:
 | Service | What it copies |
 |---------|---------------|
 | `data_loader` | `US_Accidents_March23.csv` → `/data/us_accidents.csv` |
-| `script_loader` | Pipeline scripts and `requirements.txt` → `/data/` |
+| `script_loader` | `upload_to_gcs.py`, `load_to_bigquery.py`, `requirements.txt` → `/data/` |
 | `credentials_loader` | `../Terraform/service_account.json` → `/data/service_account.json` |
 
 The credentials are stored inside the Docker volume and referenced at the fixed path `/data/service_account.json` by the DAGs — no platform-specific path configuration required.
@@ -282,7 +280,7 @@ The first startup takes a few minutes. Airflow initialises its database and crea
 
 ### 10. Workflow Orchestration (Airflow)
 
-The pipeline is orchestrated using Apache Airflow. The DAG `us_accidents_pipeline` runs the ingestion and transformation steps sequentially and is scheduled to execute daily at 03:00 UTC.
+The pipeline is orchestrated using Apache Airflow across two DAGs that run sequentially.
 
 #### 10.1 Open the Airflow UI
 * Airflow: http://localhost:8080
@@ -295,7 +293,8 @@ The pipeline is orchestrated using Apache Airflow. The DAG `us_accidents_pipelin
 1. Navigate to **DAGs** and find `us_accidents_pipeline`.
 2. Enable the DAG using the toggle on the left if it is paused.
 3. Click the **Run** button (▶) on the right to trigger a manual execution.
-4. Click on the DAG name, then open the **Graph** view to watch the `ingest → transform` tasks execute in sequence.
+4. Click on the DAG name, then open the **Graph** view to watch the `upload_to_gcs` task execute.
+5. Once `us_accidents_pipeline` has completed successfully, trigger `us_accidents_bq_pipeline` the same way to run the BigQuery load and transformation.
 
 **Option B — Backfill via CLI:**
 
@@ -308,9 +307,9 @@ docker compose exec airflow_scheduler \
 ```
 
 #### 10.3 Run with a reduced row limit (for testing)
-The full dataset contains ~7 million rows and takes several minutes to ingest. For a quick smoke test, limit the number of rows via an Airflow Variable — no code changes required.
+The full dataset contains ~7 million rows. For a quick smoke test, limit the number of rows uploaded to GCS via an Airflow Variable — no code changes required.
 
-**Via the Airflow UI:** Admin → Variables → Add → Key: `ingest_limit` and `upload_limit`, Value: `50000`
+**Via the Airflow UI:** Admin → Variables → Add → Key: `upload_limit`, Value: `50000`
 
 | Value | Rows | Approximate duration |
 |-------|------|----------------------|
@@ -318,7 +317,7 @@ The full dataset contains ~7 million rows and takes several minutes to ingest. F
 | `100000` | 100k | ~1 minute |
 | *(not set)* | all ~7M | production mode |
 
-To switch back to the full dataset, delete the variables `ingest_limit` and `upload_limit` in Airflow.
+To switch back to the full dataset, delete the `upload_limit` variable in Airflow.
 
 ---
 
@@ -328,54 +327,34 @@ The project uses two Airflow DAGs that run sequentially:
 
 | DAG | Schedule | Description |
 |-----|----------|-------------|
-| `us_accidents_pipeline` | 03:00 UTC | Ingests CSV → Postgres, exports to GCS |
-| `us_accidents_bq_pipeline` | 06:00 UTC | Loads GCS exports → BigQuery |
+| `us_accidents_pipeline` | 03:00 UTC | Uploads raw CSV directly to GCS |
+| `us_accidents_bq_pipeline` | 06:00 UTC | Loads GCS export → BigQuery (transform + partitioning + clustering) |
 
-Check that all tasks in both DAGs show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in all three destinations described below.
+Check that all tasks in both DAGs show a **dark green** (success) status in the Airflow UI. Then confirm the data is present in both destinations described below.
 
-#### 11.1 Open pgAdmin
-* pgAdmin: http://localhost:8085
-  * User: `admin@admin.com`
-  * PW: `root`
+#### 11.1 Verify data in GCS (Data Lake)
 
-#### 11.2 Add New Server
-* **General**
-  * Name: `us_accidents`
-* **Connection**
-  * Host name/address: `pgdatabase`
-  * Port: `5432`
-  * Maintenance database: `us_accidents`
-  * Username: `root`
-  * Password: `root`
-
-#### 11.3 Data location in pgAdmin
-You can now find the data in the **us_accidents** database:
-```
-Databases -> us_accidents -> Schemas -> public -> Tables -> accidents
-```
-Right-click on `accidents` and select **View/Edit Data → First 100 Rows**.
-
-#### 11.4 Verify data in GCS (Data Lake)
-
-The `upload_to_gcs` task exports the `accidents` table as a timestamped CSV into the `exports/` folder of your bucket. The file follows the naming pattern `accidents_<YYYYMMDD_HHMMSS>.csv`.
+The `upload_to_gcs` task uploads the raw CSV as a timestamped file into the `exports/` folder of your bucket. The file follows the naming pattern `us_accidents_<YYYYMMDD_HHMMSS>.csv`.
 
 1. Open https://console.cloud.google.com → **Cloud Storage → Buckets**
-2. Navigate to your bucket (e.g. `us_accidents_data_lake_bucket20260305`).
-3. Open the `exports/` folder and confirm a file named `accidents_<timestamp>.csv` is present with a non-zero file size.
+2. Navigate to your bucket (e.g. `us-accidents-data-lake-<project-id>`).
+3. Open the `exports/` folder and confirm a file named `us_accidents_<timestamp>.csv` is present with a non-zero file size.
 
 Alternatively, verify via the `gcloud` CLI:
+
+**Linux / WSL / macOS / Windows PowerShell:**
 ```bash
-gcloud storage ls gs://us_accidents_data_lake_bucket20260305/exports/
+gcloud storage ls gs://us-accidents-data-lake-<project-id>/exports/
 ```
 
-#### 11.5 Verify data in BigQuery (Data Warehouse)
+#### 11.2 Verify data in BigQuery (Data Warehouse)
 
 The `load_to_bigquery` task creates four tables in the `us_accidents_dataset` dataset:
 
 | Table | Description |
 |-------|-------------|
 | `external_accidents_raw` | External table pointing directly to the GCS CSV(s) |
-| `accidents_cleaned` | Native table with correct data types |
+| `accidents_cleaned` | Native table with correct data types, converted units, and extracted time columns |
 | `accidents_partitioned` | Partitioned by `DATE(start_time)` |
 | `accidents_partitioned_clustered` | Partitioned by `DATE(start_time)`, clustered by `state`, `severity`, `city` |
 
